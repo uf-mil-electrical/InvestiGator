@@ -13,3 +13,8 @@ The next step for InvestiGator is to be tuned for tighter flight control. This w
 Once a successful tuning has been achieved, InvestiGator will be ready for its first autonomous flight through a connection with the Raspberry Pi 5.
 
 In parallel to getting ready for autonomous flight, the detection algorithm for vision control is being written. Once pose estimates works in isolation and InvestiGator is flying stably, the systems will be joined and precision landing will be tested.
+
+## Architecture
+The drone consists of two computers, a Raspberry Pi 5 and an Orange Cube+ flight controller. The flight controller receives commands from the Pi for vision related tasks.
+
+The flight controller is connected to a ground station with a radio modem connected to a third computer, the ground station. The ground station sends and receives messages from the drone to start missions, update status, and return points of interest as the drone completes its tasks.
