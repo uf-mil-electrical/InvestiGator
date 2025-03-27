@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from typing import Callable
 from queue import Queue, ShutDown
 from threading import Thread, Event
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
@@ -8,7 +10,6 @@ class SubscriptionManager:
     Manages and notifies subscribers when a message is published.
     """
     def __init__(self, receive_queue: Queue):
-        
         self.message_subscribers = {}
         self.receive_queue = receive_queue
         self.running = Event()
@@ -49,14 +50,18 @@ class SubscriptionManager:
         self.running.clear()
         self.reader_thread.join()
 
+@dataclass
+class PublishingInfo:
+    function: Callable
+    period: float
+    last_published: float
+
 class PublicationManager:
     """
     Manages functions that publish at a given interval.
     """
-    # TODO: send_queue is not necessary unless publishers are changed to return a message and the thread puts to the q.
     def __init__(self, send_queue: Queue):
-        
-        self.publishing: dict[str, dict[callable, float, float]] = {}
+        self.publishing = {}
         self.send_queue = send_queue
         self.shortest_period = None
         self.running = Event()
@@ -73,7 +78,7 @@ class PublicationManager:
         self.publish_thread = Thread(target=publication_thread, name="Publication Thread", daemon=True)
         self.publish_thread.start()
 
-    def publish(self, message_name, frequency):
+    def publish(self, message_name: str, frequency: float):
         """
         Decorator: Registers a function to be published at given frequency.
         """

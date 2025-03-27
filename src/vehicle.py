@@ -1,4 +1,4 @@
-from mavconnetion import MAVConnection
+from src.mavconnetion import MAVConnection
 from vehicle_properties import Location
 import time
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
@@ -82,7 +82,16 @@ if __name__ == "__main__":
     time.sleep(2)
 
     vehicle.mav_connection.mav_connection.mav.command_long_send(
-        1, 0, mavlink.MAV_CMD_NAV_TAKEOFF,0, 0, 0, 0, 0, 0, 0, 10)
+        1, 0, mavlink.MAV_CMD_NAV_TAKEOFF,0, 0, 0, 0, 0, 0, 0, 5)
+
+    time.sleep(10)
+
+    vehicle.mav_connection.mav_connection.mav.command_long_send(
+        0,
+        0,
+        mavlink.MAV_CMD_NAV_LAND,
+        0,0,0,0,0,0,0,0,
+    )
 
     time.sleep(2)
 
