@@ -1,83 +1,21 @@
-from pymavlink.dialects.v20 import ardupilotmega as mavlink
-#from vehicle import VehicleManager
 from dataclasses import dataclass
+from pymavlink.dialects.v20 import ardupilotmega as mavlink
+from collections import namedtuple
 
-@dataclass
-class MAV_FRAME_GLOBAL:
-    """
-    Global (WGS84) coordinate frame + altitude relative to mean sea level (MSL).
-    """
-    latitude_deg:  float
-    longitude_deg:  float
-    altitude_m:   float
+MavFrameGlobal = namedtuple("MavFrameGlobal", ["lattitude_deg", "longitude_deg", "altitude_m"])
+MavFrameLocalNed = namedtuple("LocalNED", ["x_north_m", "y_east_m", "z_down_m"])
+MavFrameGlobalRel = namedtuple("GlobalRelative",["lattitude_deg", "longitude_deg", "altitude_rel_m"])
+MavFrameLocalENU = namedtuple("LocalENU", ["x_east_m", "y_north_m", "z_up_m"])
+MavFrameLocalOffsetNED = namedtuple("LocalOffsetNED", ["x_north_m", "y_east_m", "z_down_m"])
+MavFrameBodyFRD = namedtuple("BodyFRD", ["x_forward_m", "y_right_m", "z_down_m"])
+MavFrameLocalFRD = namedtuple("LocalFRD", ["x_forward_m", "y_right_m", "z_down_m"])
+MavFrameLocalFLU = namedtuple("LocalFLU", ["x_forward_m", "y_left_m", "z_up_m"])
 
-@dataclass
-class MAV_FRAME_LOCAL_NED:
-    """
-    NED local tangent frame (x: North, y: East, z: Down) with origin fixed relative to earth.
-    """
-    x_north_m:    float
-    y_east_m:     float
-    z_down_m:     float
-
-@dataclass
-class MAV_FRAME_GLOBAL_RELATIVE_ALT:
-    """
-    Global (WGS84) coordinate frame + altitude relative to the home position.
-    """
-    latitude_deg: float
-    longitude_deg: float
-    altitude_relative_m: float
-
-@dataclass
-class MAV_FRAME_LOCAL_ENU:
-    """
-    ENU local tangent frame (x: East, y: North, z: Up) with origin fixed relative to earth.
-    """
-    x_east_m:     float
-    y_north_m:    float
-    z_up_m:       float
-
-@dataclass
-class MAV_FRAME_LOCAL_OFFSET_NED:
-    """
-    NED local tangent frame (x: North, y: East, z: Down) with origin that travels with the vehicle.
-    """
-    x_north_m:    float
-    y_east_m:     float
-    z_down_m:     float
-
-@dataclass
-class MAV_FRAME_BODY_FRD:
-    """
-    FRD local frame aligned to the vehicle's attitude (x: Forward, y: Right, z: Down) with an origin that travels with vehicle.
-    """
-    x_forward_m:  float
-    y_right_m:    float
-    z_down_m:     float
-
-@dataclass
-class MAV_FRAME_LOCAL_FRD:
-    """
-    FRD local tangent frame (x: Forward, y: Right, z: Down) with origin fixed relative to earth. The forward axis is aligned to the front of the vehicle in the horizontal plane.
-    """
-    x_forward_m:  float
-    y_right_m:    float
-    z_down_m:     float
-
-@dataclass
-class MAV_FRAME_LOCAL_FLU:
-    """
-    FLU local tangent frame (x: Forward, y: Left, z: Up) with origin fixed relative to earth. The forward axis is aligned to the front of the vehicle in the horizontal plane.
-    """
-    x_forward_m:  float
-    y_left_m:     float
-    z_up_m:       float
-
-class Location:
+class Location(object):
     """
     Represents location of the vehicle and provides methods to return location wrapped in different location types.
     """
+
     def __init__(self, vehicle):
         self.lat_deg = None
         self.lon_deg = None
@@ -89,44 +27,62 @@ class Location:
         self.z_down_m = None
 
         @vehicle.subscribe(mavlink.mavlink_map[mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT].msgname)
-        def subscription_update(message_type, message: mavlink.MAVLink_global_position_int_message):
+        def subscription_update(message: mavlink.MAVLink_global_position_int_message):
             self.lat_deg = message.lat / 1E7
             self.lon_deg = message.lon / 1E7
-            self.alt_m = message.alt / 1E3                     # Given in mm
-            self.relative_alt_m = message.relative_alt / 1E3   # Given in mm
+            self.alt_m = message.alt / 1E3  # Given in mm
+            self.relative_alt_m = message.relative_alt / 1E3  # Given in mm
 
         @vehicle.subscribe(mavlink.MAVLink_local_position_ned_message.msgname)
-        def subscription_update(message_type, message: mavlink.MAVLink_local_position_ned_message):
+        def subscription_update(message: mavlink.MAVLink_local_position_ned_message):
             self.x_north_m = message.x
             self.y_east_m = message.y
-            self.z_down_m = message.z   # Negative altitude
+            self.z_down_m = message.z  # Negative altitude
 
     @property
     def global_frame(self):
         """
         Returns location as a MAV_FRAME_GLOBAL frame. Global (WGS84) coordinate frame + altitude relative to mean sea level (MSL).
         """
-        return MAV_FRAME_GLOBAL(self.lat_deg, self.lon_deg, self.alt_m)
-    
+        return MavFrameGlobal(self.lat_deg, self.lon_deg, self.alt_m)
+
     @property
     def local_ned(self):
         """"
         NED local tangent frame (x: North, y: East, z: Down) with origin fixed relative to earth.
         """
-        return MAV_FRAME_LOCAL_NED(self.x_north_m, self.y_east_m, self.z_down_m)
+        return MavFrameLocalNed(self.x_north_m, self.y_east_m, self.z_down_m)
+
+class Status(object):
+    """
+    Information received from the vehicle's heartbeat.
+    """
+
+    def __init__(self, vehicle):
+        self.mode_dict = mavlink.enums["COPTER_MODE"]
+        self.mode: int
+        self.type: int
+        self.autopilot: int
+        self.base_mode: int
+        self.custom_mode: int
+        self.system_status: int
+
+        @vehicle.subscribe("Heartbeat"):
+        def subscription_update(message: mavlink.MAVLink_heartbeat_message):
+            self.type = message.type
+            self.autopilot = message.autopilot
+            self.base_mode = message.base_mode
+            self.custom_mode = message.custom_mode
+            self.system_status = message.system_status
 
     @property
-    def global_relative_alt(self):
-        pass
+    def mode(self):
+        return self.mode_dict[self.custom_mode]
 
-    @property
-    def local_offset_ned(self):
-        pass
+    @mode.setter
+    def mode(self, mode: mavlink.enums["COPTER_MODE"]):
+        if mode not in mavlink.enums["COPTER_MODE"]:
+            print("Invalid mode")
+            return
 
-    @property
-    def body_frd(self):
-        pass
 
-    @property
-    def local_frd(self):
-        pass

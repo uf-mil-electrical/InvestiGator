@@ -1,18 +1,21 @@
+import time
+
+from pymavlink import mavutil
+from pymavlink.dialects.v20 import ardupilotmega as mavlink
+
 from src.mavconnetion import MAVConnection
 from vehicle_properties import Location
-import time
-from pymavlink.dialects.v20 import ardupilotmega as mavlink
-from pymavlink import mavutil
 
 radio = "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTDCKG37-if00-port0"
 simulation = 'udp:127.0.0.1:14550'
+
 
 class VehicleManager:
     """
     Represents properties of a vehicle and handles communication with it.
     """
-    def __init__(self, address, baud=115200):
 
+    def __init__(self, address, baud=115200):
         self.mav_connection = MAVConnection(address, baud)
         self.mode_map = mavutil.mode_mapping_byname(mavlink.MAV_TYPE_QUADROTOR)
 
@@ -22,12 +25,10 @@ class VehicleManager:
         self.subscribe = self.mav_connection.subscribe
 
         self.send_alias = self.mav_connection.mav_connection.mav
-        self.arducopter_arm = self.mav_connection.mav_connection.arducopter_arm
-        self.arducopter_disarm = self.mav_connection.mav_connection.arducopter_disarm
 
         self.location = Location(self)
 
-        @self.publish('Heartbeat', 1)
+        @self.publish('HEARTBEAT', 1)
         def publish_heartbeat():
             self.send_alias.heartbeat_send(
                 type=mavlink.MAV_TYPE_ONBOARD_CONTROLLER,
@@ -45,16 +46,26 @@ class VehicleManager:
 
     def wait_for_armed(self):
         """
-        Wait for vehicle to be armed
+        Wait for vehicle to be armed.
         """
-        pass
-
+        self.send_alias.command_long_send(
+            target_system=0,
+            target_component=0,
+            command=mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+            confirmation=0,
+            param1=1.0,
+            param2=0.0,
+            param3=0.0,
+            param4=0.0,
+            param5=0.0,
+            param6=0.0,
+            param7=0.0, )
 
     def close(self):
         self.mav_connection.close()
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     vehicle = VehicleManager("udp:127.0.0.1:14550")
 
     time.sleep(1)
@@ -82,7 +93,7 @@ if __name__ == "__main__":
     time.sleep(2)
 
     vehicle.mav_connection.mav_connection.mav.command_long_send(
-        1, 0, mavlink.MAV_CMD_NAV_TAKEOFF,0, 0, 0, 0, 0, 0, 0, 5)
+        1, 0, mavlink.MAV_CMD_NAV_TAKEOFF, 0, 0, 0, 0, 0, 0, 0, 5)
 
     time.sleep(10)
 
@@ -90,7 +101,7 @@ if __name__ == "__main__":
         0,
         0,
         mavlink.MAV_CMD_NAV_LAND,
-        0,0,0,0,0,0,0,0,
+        0, 0, 0, 0, 0, 0, 0, 0,
     )
 
     time.sleep(2)

@@ -1,14 +1,17 @@
 from dataclasses import dataclass
-from typing import Callable
 from queue import Queue, ShutDown
 from threading import Thread, Event
-from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from time import monotonic, sleep
+from typing import Callable
+
+from pymavlink.dialects.v20 import ardupilotmega as mavlink
+
 
 class SubscriptionManager:
     """
     Manages and notifies subscribers when a message is published.
     """
+
     def __init__(self, receive_queue: Queue):
         self.message_subscribers = {}
         self.receive_queue = receive_queue
@@ -19,12 +22,11 @@ class SubscriptionManager:
             while self.running.is_set():
                 try:
                     message: mavlink.MAVLink_message = receive_queue.get(block=True)
-                    message_type = message.get_type()
-                    if message_type in self.message_subscribers:
-                        self.update_subscribers(message_type, message)
+                    if message.get_type() in self.message_subscribers:
+                        self.update_subscribers(message)
                 except ShutDown:
                     break
-        
+
         self.reader_thread = Thread(target=reader, name="SubManager Thread")
         self.reader_thread.start()
 
@@ -32,23 +34,26 @@ class SubscriptionManager:
         """
         Decorator: Add a function to the mailing list for message_type or attribute. Usage: Decorate with @__class__.__name__.subscribe('message_type') to register a function.
         """
+
         def wrap(function):
             if message_type not in self.message_subscribers:
                 self.message_subscribers[message_type] = []
             self.message_subscribers[message_type].append(function)
+
         return wrap
 
-    def update_subscribers(self, message_type, message: mavlink.MAVLink_message):
+    def update_subscribers(self, message: mavlink.MAVLink_message):
         """
         Call functions that have a subscription to message_type.
         """
-        for function in self.message_subscribers[message_type]:
-            function(message_type, message)
+        for function in self.message_subscribers[message.get_type()]:
+            function(message)
 
     def close(self):
         self.receive_queue.shutdown(immediate=True)
         self.running.clear()
         self.reader_thread.join()
+
 
 @dataclass
 class PublishingInfo:
@@ -56,10 +61,12 @@ class PublishingInfo:
     period: float
     last_published: float
 
+
 class PublicationManager:
     """
     Manages functions that publish at a given interval.
     """
+
     def __init__(self, send_queue: Queue):
         self.publishing = {}
         self.send_queue = send_queue
@@ -70,7 +77,8 @@ class PublicationManager:
         def publication_thread():
             while self.running.is_set() and self.shortest_period is not None:
                 for publisher in self.publishing.values():
-                    if (publisher["last_published"] is None) or (monotonic() - publisher["last_published"]) >= (1/publisher["frequency"]):
+                    if (publisher["last_published"] is None) or (monotonic() - publisher["last_published"]) >= (
+                            1 / publisher["frequency"]):
                         publisher["function"]()
                         publisher["last_published"] = monotonic()
                 sleep(self.shortest_period)
@@ -86,7 +94,7 @@ class PublicationManager:
             print("Frequency too large. Please choose a frequency less than or equal to 50Hz.")
             return
 
-        if  self.shortest_period is None or 1/frequency < self.shortest_period:
+        if self.shortest_period is None or 1 / frequency < self.shortest_period:
             self.shortest_period = 1 / frequency
 
         def wrap(function):
@@ -95,8 +103,9 @@ class PublicationManager:
             else:
                 self.publishing[message_name] = {"function": function, "frequency": frequency, "last_published": None}
             return function
+
         return wrap
-    
+
     def register_publisher(self, message_name, frequency, function):
         """
         Registers a function to be published at given frequency.

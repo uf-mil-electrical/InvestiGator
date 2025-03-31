@@ -4,16 +4,18 @@ For more information, see: Observer Pattern, Publish/Subscribe Pattern articles 
 
 This example copies SubscriptionManager from pubsub.py as Stream.
 """
-import threading
 import queue
-import pymavlink
+import threading
 import time
+
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
+
 
 class Stream:
     """
     A publisher of messages that are categorized by topic. Implements methods to register and deregister subscribers.
     """
+
     def __init__(self, source_queue: queue.Queue):
         self.source_queue = source_queue
         self.subscribers = {}
@@ -48,11 +50,14 @@ class Stream:
         This is the decorator function. Adding @subscribe(topic, message) above a function will pass it in as
         an argument to this method. Equivalent to the method above.
         """
+
         def wrap(function):
             if topic not in self.subscribers:
                 self.subscribers[topic] = []
             self.subscribers[topic].append(function)
+
         return wrap
+
     def update_subscribers(self, message: mavlink.MAVLink_message):
         """
         As topics come in, call the registered functions.
@@ -65,10 +70,12 @@ class Stream:
         self.running.clear()
         self.source_thread.join()
 
+
 class OwnsSubscribers:
     """
     This object owns objects and the stream they listen to.
     """
+
     def __init__(self, source_queue: queue.Queue):
         self.stream = Stream(source_queue)
         self.subscribe_decorator = self.stream.subscribe_decorator  # Aliases
@@ -78,11 +85,13 @@ class OwnsSubscribers:
     def close(self):
         self.stream.close()
 
+
 class Subscriber:
     """
     This class wants to observe/subscribe to a subject/stream that publishes topics. It implements an update
     method that is called by the stream.
     """
+
     def __init__(self, main_object):
         self.main_object = main_object
 
@@ -90,10 +99,12 @@ class Subscriber:
     def update(cls, message):
         return
 
+
 class GPSData(Subscriber):
     """
     Keeps GPS data updated.
     """
+
     def __init__(self, main_object: OwnsSubscribers):
         super().__init__(main_object)
 
@@ -110,36 +121,35 @@ class GPSData(Subscriber):
         # To use the decorator, the update function must be defined in the __init__ method of the subscriber.
         @self.main_object.subscribe_decorator("GLOBAL_POSITION_INT")
         def update_2(message: mavlink.MAVLink_global_position_int_message):
-
             self._latitude_deg = message.lat / 1E7
             self._longitude_deg = message.lon / 1E7
             self._altitude_m = message.alt / 1E3
             self._rel_altitude_m = message.relative_alt / 1E3
 
     def update(self, message: mavlink.MAVLink_gps_raw_int_message):
-
-            self._raw_data = message.get_payload()
+        self._raw_data = message.get_payload()
 
     @property
     def location_global(self):
-
         return self._latitude_deg, self._longitude_deg, self._altitude_m
 
     @property
     def raw_gps(self):
         return self._raw_data
 
+
 if __name__ == '__main__':
     message_queue = queue.Queue()
     vehicle = OwnsSubscribers(message_queue)
 
     print(f"Initial GPS: {vehicle.gps_data.location_global}")
-    message_queue.put(mavlink.MAVLink_global_position_int_message(8,4,3,5,2,23,52,13,3))
+    message_queue.put(mavlink.MAVLink_global_position_int_message(8, 4, 3, 5, 2, 23, 52, 13, 3))
     time.sleep(0.01)
     print(f"After message: {vehicle.gps_data.location_global}")
 
     print(f"Initial Raw GPS: {vehicle.gps_data.raw_gps}")
-    message_queue.put(mavlink.MAVLink_gps_raw_int_message(0,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,))
+    message_queue.put(
+        mavlink.MAVLink_gps_raw_int_message(0, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, ))
     time.sleep(0.01)
     print(f"After message: {vehicle.gps_data.raw_gps}")
 
