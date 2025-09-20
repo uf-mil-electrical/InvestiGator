@@ -32,7 +32,8 @@ class SubscriptionManager:
 
     def subscribe(self, message_type):
         """
-        Decorator: Add a function to the mailing list for message_type or attribute. Usage: Decorate with @__class__.__name__.subscribe('message_type') to register a function.
+        Decorator: Add a function to the mailing list for message_type or attribute. 
+        Usage: Decorate with @__class__.__name__.subscribe('message_type') to register a function.
         """
 
         def wrap(function):
