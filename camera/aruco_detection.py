@@ -44,7 +44,7 @@ with dai.Pipeline() as pipeline:
         # Check that any detected markers match the one we are looking for
         if ids is not None:
             for i in range(len(ids)):
-                if ids[i][0] == 0:
+                if ids[i][0] == 4 or ids[i][0] == 0:
                     # When the marker is found, alter the data to fit the expected input of drawDetectedMarkers
                     ids_ = np.array(ids[i][0], dtype=np.int32).reshape(-1,1)
                     cv2.aruco.drawDetectedMarkers(frame, [corners[i]], ids_)
@@ -61,7 +61,23 @@ with dai.Pipeline() as pipeline:
                     rvecs_transformed, _ = cv2.Rodrigues(transformed_rotation_matrix)
 
                     cv2.drawFrameAxes(frame, camMatrix, distortionCoefficients, rvecs_transformed, tvecs, 0.75, 2)
-                    break   
+
+                    # Get xyz coordinates
+                    x = tvecs[0][0]
+                    y = tvecs[1][0]
+                    z = tvecs[2][0]
+
+                    coordinates = f"ID: {ids[i][0]} | X: {x:.2f} Y: {y:.2f} Z: {z:.2f}"
+
+                    font = cv2.FONT_HERSHEY_SIMPLEX
+                    font_scale = 0.5
+                    color = (0, 255, 0) # Green
+                    thickness = 1
+
+                    top_left_corner = (int(corners[i][0][0], int(corners[i][0][0])))
+                    text_position = (top_left_corner[0], top_left_corner[1] - 10)
+
+                    cv2.putText(frame, coordinates, text_position, font, font_scale, color, thickness, cv2.LINE_AA)
 
         cv2.imshow("video", frame)
 
