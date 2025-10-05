@@ -10,34 +10,41 @@ from typing import List, Tuple, Optional
 import depthai as dai
 import numpy as np
 import cv2
+import time
 
 # TODO: Dictionary for the pose queue, paths of model blobs
 
-# Camera Properties
-DIST_COEFF = np.array([ 4.36490011e+00,  1.47384214e+00, -6.14358260e-06,  9.69038447e-05,
-                        3.05115115e-02,  4.72419739e+00,  2.81013250e+00,  2.22624362e-01,
-                        0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,
-                        -2.07635248e-03,  1.58486480e-03], 
-                        dtype=np.float32)
-
-CAM_MATRIX = np.array([ [563.78790283, 0.          , 618.17443848],
-                        [  0.        , 563.56225586, 410.73165894],
-                        [  0.        , 0.          , 1.        ]], 
-                        dtype=np.float32)
-
-WORLD_POINTS = np.array([[0.,0.,0.],
-                         [1.,0.,0.],
-                         [1.,1.,0.],
-                         [0.,1.,0.]], 
-                        dtype=np.float32)
-
-FLIP_MATRIX = np.array([[0, 1, 0],
-                        [1, 0, 0],
-                        [0, 0, -1]], 
-                        dtype=np.float32)
-
 # Fiducial Properties
 FIDUCIAL_IDS = [0, 4]
+MARKER_SIZE_M = 0.18
+
+# Camera Properties
+DIST_COEFF = np.array(
+    [ 4.36490011e+00,  1.47384214e+00, -6.14358260e-06,  9.69038447e-05,
+    3.05115115e-02,  4.72419739e+00,  2.81013250e+00,  2.22624362e-01,
+    0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,
+    -2.07635248e-03,  1.58486480e-03], 
+dtype=np.float32)
+
+CAM_MATRIX = np.array([ 
+    [563.78790283, 0.          , 618.17443848],
+    [  0.        , 563.56225586, 410.73165894],
+    [  0.        , 0.          , 1.        ]
+], dtype=np.float32)
+
+# Marker corners relative to the center of the marker. Each array is [x,y,z]
+MARKER_CORNERS = np.array([
+    [-MARKER_SIZE_M/2,  MARKER_SIZE_M/2, 0], # Top left
+    [ MARKER_SIZE_M/2,  MARKER_SIZE_M/2, 0], # Top right
+    [ MARKER_SIZE_M/2, -MARKER_SIZE_M/2, 0], # Bottom left
+    [-MARKER_SIZE_M/2, -MARKER_SIZE_M/2, 0]  # Bottom right
+], dtype=np.float32)
+
+FLIP_MATRIX = np.array([
+    [0, MARKER_SIZE_M, 0],
+    [MARKER_SIZE_M, 0, 0],
+    [0, 0, -MARKER_SIZE_M]
+], dtype=np.float32)
 
 
 class Camera:
@@ -103,7 +110,7 @@ class Camera:
             return
         
         self.running.set()
-        self.video_process = Process(self.video_loop(), daemon=True)
+        self.video_process = Process(target=self.video_loop(), daemon=True)
         self.video_process.start()
 
 
@@ -134,19 +141,21 @@ class Camera:
         self.start()
 
 
-    def process_fiducial_frame(self, frame: np.ndarray):
+    def process_fiducial_frame(self, frame: np.ndarray) -> np.ndarray:
         """
         Process input frame and search for fiducial markers. Draw markers to screen if preview is enabled.
         """
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        grey_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        corners, ids = self.detect_filtered_markers(frame)
+        corners, ids = self.detect_filtered_markers(grey_frame)
 
         if len(ids) == 0 or len(corners) == 0:
-            return
+            return frame
+        
+        print("Detected markers! ", ids)
 
-        for i in range(len(ids)):
-            success, rvecs, tvecs = cv2.solvePnP(WORLD_POINTS, corners[i], CAM_MATRIX, DIST_COEFF)
+        for i, (marker_corners, marker_id) in enumerate(zip(corners, ids)):
+            success, rvecs, tvecs = cv2.solvePnP(MARKER_CORNERS, marker_corners, CAM_MATRIX, DIST_COEFF)
 
             if not success:
                 continue
@@ -156,15 +165,16 @@ class Camera:
             self.detection_queue.put(xyz)
 
             if self.preview:
-                cv2.aruco.drawDetectedMarkers(frame, [corners[i]], ids[i])
+                cv2.aruco.drawDetectedMarkers(frame, [marker_corners], marker_id)
                 rotation_matrix, _ = cv2.Rodrigues(rvecs)
                 transformed_rotation_matrix = rotation_matrix @ FLIP_MATRIX
                 rvecs_transformed, _ = cv2.Rodrigues(transformed_rotation_matrix)
                 cv2.drawFrameAxes(frame, CAM_MATRIX, DIST_COEFF, rvecs_transformed, tvecs, 0.75, 2)
 
                 pixel_coordinates = f"ID: {ids[i][0]} | X: {xyz[0]:.2f} Y: {xyz[1]:.2f} Z: {xyz[2]:.2f}"
-                cv2.putText(frame, pixel_coordinates, tuple(corners[i][0].astype(int)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
-
+                cv2.putText(frame, pixel_coordinates, tuple(marker_corners[0][0].astype(int)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+            
+        return frame
 
     def video_loop(self):
         """
@@ -173,7 +183,7 @@ class Camera:
         with dai.Pipeline() as pipeline:
             cam = pipeline.create(dai.node.Camera).build(dai.CameraBoardSocket.CAM_A)
             
-            if self.mode == "UAV Recovery" or "Recording":
+            if self.mode in ("UAV Recovery", "Recording"):
                 video_queue = cam.requestOutput(size=(640,400), enableUndistortion=True, fps=20).createOutputQueue()
 
             pipeline.start()
@@ -183,7 +193,7 @@ class Camera:
                 frame = frame.getCvFrame()
 
                 if self.mode == "UAV Recovery":
-                    self.process_fiducial_frame(frame)
+                    frame = self.process_fiducial_frame(frame)
 
 
                 if self.preview:
@@ -191,6 +201,8 @@ class Camera:
 
                     if cv2.waitKey(1) == ord("q"):
                         break
+            
+            self.stop()
 
 if __name__ == "__main__":
     
@@ -199,3 +211,5 @@ if __name__ == "__main__":
     camera.switch_mode("UAV Recovery")
     camera.start()
     
+    while (camera.video_process is not None and camera.video_process.is_alive()):
+        time.sleep(1)
