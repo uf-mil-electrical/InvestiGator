@@ -75,7 +75,7 @@ with dai.Pipeline() as pipeline:
                     thickness = 1
 
                     top_left_corner = (int(corners[i][0][0], int(corners[i][0][0])))
-                    text_position = (top_left_corner[0], top_left_corner[1] - 10)
+                    text_position = (top_left_corner, top_left_corner - 10)
 
                     cv2.putText(frame, coordinates, text_position, font, font_scale, color, thickness, cv2.LINE_AA)
 
