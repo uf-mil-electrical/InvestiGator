@@ -26,24 +26,33 @@ DIST_COEFF = np.array(
     -2.07635248e-03,  1.58486480e-03], 
 dtype=np.float32)
 
+DIST_COEFF_ZERO = np.array([0,0,0,0,0], dtype=np.float32)
+
 CAM_MATRIX = np.array([ 
     [563.78790283, 0.          , 618.17443848],
     [  0.        , 563.56225586, 410.73165894],
     [  0.        , 0.          , 1.        ]
 ], dtype=np.float32)
 
-# Marker corners relative to the center of the marker. Each array is [x,y,z]
-MARKER_CORNERS = np.array([
-    [-MARKER_SIZE_M/2,  MARKER_SIZE_M/2, 0], # Top left
-    [ MARKER_SIZE_M/2,  MARKER_SIZE_M/2, 0], # Top right
-    [ MARKER_SIZE_M/2, -MARKER_SIZE_M/2, 0], # Bottom left
-    [-MARKER_SIZE_M/2, -MARKER_SIZE_M/2, 0]  # Bottom right
+# [x,y,z] coordinates of each corner
+MARKER_CORNERS_TOP_LEFT = np.array([
+    [0,             0,              0], # Top left
+    [MARKER_SIZE_M, 0,              0], # Top right
+    [MARKER_SIZE_M, MARKER_SIZE_M,  0], # Bottom right
+    [0,             MARKER_SIZE_M,  0]  # Bottom left
+], dtype=np.float32)
+
+MARKER_CORNERS_CENTER = np.array([
+    [-MARKER_SIZE_M / 2,  MARKER_SIZE_M / 2, 0],  # Top left
+    [ MARKER_SIZE_M / 2,  MARKER_SIZE_M / 2, 0],  # Top right
+    [ MARKER_SIZE_M / 2, -MARKER_SIZE_M / 2, 0],  # Bottom right
+    [-MARKER_SIZE_M / 2, -MARKER_SIZE_M / 2, 0]   # Bottom left
 ], dtype=np.float32)
 
 FLIP_MATRIX = np.array([
-    [0, MARKER_SIZE_M, 0],
-    [MARKER_SIZE_M, 0, 0],
-    [0, 0, -MARKER_SIZE_M]
+    [0, 1, 0],
+    [1, 0, 0],
+    [0, 0,-1]
 ], dtype=np.float32)
 
 
@@ -63,7 +72,6 @@ class Camera:
         self.preview = preview
         self.running = Event()
 
-        self.detector = self.aruco_detector()
         self.mode = "Recording"
         self.video_process: Optional[Process] = None
 
@@ -78,7 +86,7 @@ class Camera:
         return detector
 
 
-    def detect_filtered_markers(self, frame: np.ndarray, filter_list: Tuple[int,...] = tuple(FIDUCIAL_IDS)) -> Tuple[List[np.ndarray], np.ndarray]:
+    def detect_filtered_markers(self, frame: np.ndarray, detector: cv2.aruco.ArucoDetector, filter_list: Tuple[int,...] = tuple(FIDUCIAL_IDS)) -> Tuple[List[np.ndarray], np.ndarray]:
         """
         Detect markers and return corners and ids filtered by filter_list.
         """
@@ -86,7 +94,7 @@ class Camera:
         # - corners is a list of arrays with shape (1, 4, 2) -> (marker, corners, (x,y))
         # ids is an array with shape (N, 1) -> (marker, id)
 
-        corners, ids, _ = self.detector.detectMarkers(frame)
+        corners, ids, _ = detector.detectMarkers(frame)
 
         if ids is None or len(ids) == 0:
             return [], np.array([], dtype=np.int32)
@@ -110,7 +118,7 @@ class Camera:
             return
         
         self.running.set()
-        self.video_process = Process(target=self.video_loop(), daemon=True)
+        self.video_process = Process(target=self.video_loop, daemon=True)
         self.video_process.start()
 
 
@@ -141,38 +149,30 @@ class Camera:
         self.start()
 
 
-    def process_fiducial_frame(self, frame: np.ndarray) -> np.ndarray:
+    def process_fiducial_frame(self, frame: np.ndarray, detector: cv2.aruco.ArucoDetector) -> np.ndarray:
         """
         Process input frame and search for fiducial markers. Draw markers to screen if preview is enabled.
         """
         grey_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        corners, ids = self.detect_filtered_markers(grey_frame)
+        corners, ids = self.detect_filtered_markers(grey_frame, detector)
 
         if len(ids) == 0 or len(corners) == 0:
             return frame
-        
-        print("Detected markers! ", ids)
 
         for i, (marker_corners, marker_id) in enumerate(zip(corners, ids)):
-            success, rvecs, tvecs = cv2.solvePnP(MARKER_CORNERS, marker_corners, CAM_MATRIX, DIST_COEFF)
+            success, rvecs, tvecs = cv2.solvePnP(MARKER_CORNERS_CENTER, marker_corners.reshape(-1,2), CAM_MATRIX, DIST_COEFF_ZERO)
 
             if not success:
                 continue
 
             xyz = tvecs.flatten()
-            # TODO: Standardize this in a dictionary for all detections
             self.detection_queue.put(xyz)
 
             if self.preview:
                 cv2.aruco.drawDetectedMarkers(frame, [marker_corners], marker_id)
-                rotation_matrix, _ = cv2.Rodrigues(rvecs)
-                transformed_rotation_matrix = rotation_matrix @ FLIP_MATRIX
-                rvecs_transformed, _ = cv2.Rodrigues(transformed_rotation_matrix)
-                cv2.drawFrameAxes(frame, CAM_MATRIX, DIST_COEFF, rvecs_transformed, tvecs, 0.75, 2)
 
-                pixel_coordinates = f"ID: {ids[i][0]} | X: {xyz[0]:.2f} Y: {xyz[1]:.2f} Z: {xyz[2]:.2f}"
-                cv2.putText(frame, pixel_coordinates, tuple(marker_corners[0][0].astype(int)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+                pixel_coordinates = f"ID: {ids[i][0]} | X: {xyz[0]:.3f}m Y: {xyz[1]:.3f}m Z: {xyz[2]:.3f}m"
+                cv2.putText(frame, pixel_coordinates, (10,100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
             
         return frame
 
@@ -184,7 +184,8 @@ class Camera:
             cam = pipeline.create(dai.node.Camera).build(dai.CameraBoardSocket.CAM_A)
             
             if self.mode in ("UAV Recovery", "Recording"):
-                video_queue = cam.requestOutput(size=(640,400), enableUndistortion=True, fps=20).createOutputQueue()
+                video_queue = cam.requestOutput(size=(1280,720), enableUndistortion=True, fps=30).createOutputQueue()
+                detector = self.aruco_detector()
 
             pipeline.start()
             while self.running.is_set():    
@@ -193,17 +194,19 @@ class Camera:
                 frame = frame.getCvFrame()
 
                 if self.mode == "UAV Recovery":
-                    frame = self.process_fiducial_frame(frame)
+                    frame = self.process_fiducial_frame(frame, detector)
 
 
                 if self.preview:
                     cv2.imshow("video", frame)
 
                     if cv2.waitKey(1) == ord("q"):
+                        self.running.clear()
                         break
-            
-            self.stop()
 
+            cv2.destroyAllWindows()
+            return
+            
 if __name__ == "__main__":
     
     queue = Queue()
@@ -211,5 +214,12 @@ if __name__ == "__main__":
     camera.switch_mode("UAV Recovery")
     camera.start()
     
-    while (camera.video_process is not None and camera.video_process.is_alive()):
-        time.sleep(1)
+    try:
+        while (camera.running.is_set()):
+            time.sleep(1)
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        camera.stop()
+    
