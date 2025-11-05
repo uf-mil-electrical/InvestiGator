@@ -93,15 +93,14 @@ class PublicationManager:
         """
         if frequency > 50:
             print("Frequency too large. Please choose a frequency less than or equal to 50Hz.")
-            return
 
-        if self.shortest_period is None or 1 / frequency < self.shortest_period:
+        elif self.shortest_period is None or 1 / frequency < self.shortest_period:
             self.shortest_period = 1 / frequency
 
         def wrap(function):
             if message_name in self.publishing:
                 print("This function is already registered.")
-            else:
+            elif frequency <= 50:
                 self.publishing[message_name] = {"function": function, "frequency": frequency, "last_published": None}
             return function
 
