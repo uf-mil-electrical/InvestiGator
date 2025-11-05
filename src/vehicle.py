@@ -4,7 +4,7 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
 from src.mavconnetion import MAVConnection
-from vehicle_properties import Location
+from vehicle_properties import Location, Status
 
 radio = "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTDCKG37-if00-port0"
 simulation = 'udp:127.0.0.1:14550'
@@ -27,6 +27,7 @@ class VehicleManager:
         self.send_alias = self.mav_connection.mav_connection.mav
 
         self.location = Location(self)
+        self.status = Status(self)
 
         @self.publish('HEARTBEAT', 1)
         def publish_heartbeat():
@@ -42,11 +43,27 @@ class VehicleManager:
         """
         Wait for vehicle to arm and take off to alt_m meters.
         """
-        pass
+        if not self.status.armed:
+            # TODO: Log this as an error and raise an exception. Remove this auto arming.
+            self.wait_for_armed()
 
-    def wait_for_armed(self):
+        vehicle.send_alias.command_long_send(
+            target_system=0,
+            target_component=0,
+            command=mavlink.MAV_CMD_NAV_TAKEOFF,
+            confirmation=0,
+            param1=0.0,
+            param2=0.0,
+            param3=0.0,
+            param4=0.0,
+            param5=0.0,
+            param6=0.0,
+            param7=alt_m
+        )
+
+    def land(self):
         """
-        Wait for vehicle to be armed.
+        Land the vehicle.
         """
         self.send_alias.command_long_send(
             target_system=0,
@@ -59,7 +76,43 @@ class VehicleManager:
             param4=0.0,
             param5=0.0,
             param6=0.0,
-            param7=0.0, )
+            param7=0.0 
+        )
+
+    def wait_for_armed(self):
+        """
+        Wait for vehicle to be armed.
+        """
+        while not self.status.armed:
+            self.arm()
+            time.sleep(0.5)
+
+    def arm(self):
+        """
+        Arm vehicle.
+        """
+        self.send_alias.command_long_send(
+            target_system=0,
+            target_component=0,
+            command=mavlink.MAV_CMD_NAV_LAND,
+            confirmation=0,
+            param1=0.0,
+            param2=0.0,
+            param3=0.0,
+            param4=0.0,
+            param5=0.0,
+            param6=0.0,
+            param7=0.0 
+        )
+
+    def move_relative_m(self, forward_m):
+        pass
+
+    def move_global_gps(self):
+        pass
+
+    def set_mode(self, mode):
+        pass
 
     def close(self):
         self.mav_connection.close()
