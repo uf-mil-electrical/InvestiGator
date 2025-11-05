@@ -11,6 +11,7 @@ MavFrameLocalOffsetNED = namedtuple("LocalOffsetNED", ["x_north_m", "y_east_m", 
 MavFrameBodyFRD = namedtuple("BodyFRD", ["x_forward_m", "y_right_m", "z_down_m"])
 MavFrameLocalFRD = namedtuple("LocalFRD", ["x_forward_m", "y_right_m", "z_down_m"])
 MavFrameLocalFLU = namedtuple("LocalFLU", ["x_forward_m", "y_left_m", "z_up_m"])
+Attitude = namedtuple("Attitude", ["roll_rad", "pitch_rad", "yaw_rad", "rollspeed_rad_s", "pitchspeed_rad_s", "yawspeed_rad_s"])
 
 class Location(object):
     """
@@ -29,6 +30,13 @@ class Location(object):
         self.y_east_m = None
         self.z_down_m = None
 
+        self.roll_rad = None
+        self.pitch_rad = None
+        self.yaw_rad = None
+        self.rollspeed_rad_s = None
+        self.pitchspeed_rad_s = None
+        self.yawspeed_rad_s = None
+
         @vehicle.subscribe(mavlink.mavlink_map[mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT].msgname)
         def update_global_position(message: mavlink.MAVLink_global_position_int_message):
             with self.lock:
@@ -43,6 +51,16 @@ class Location(object):
                 self.x_north_m = message.x
                 self.y_east_m = message.y
                 self.z_down_m = message.z  # Negative altitude
+
+        @vehicle.subscribe(mavlink.MAVLink_attitude_message.msgname)
+        def update_attitude(message: mavlink.MAVLink_attitude_message):
+            with self.lock:
+                self.roll_rad = message.roll
+                self.pitch_rad = message.pitch
+                self.yaw_rad = message.yaw
+                self.rollspeed_rad_s = message.rollspeed
+                self.pitchspeed_rad_s = message.pitchspeed
+                self.yawspeed_rad_s = message.yawspeed
 
     @property
     def global_frame(self):
@@ -61,12 +79,21 @@ class Location(object):
             return MavFrameLocalNed(self.x_north_m, self.y_east_m, self.z_down_m)
     
     @property
-    def local_frd(self):
+    def body_frd(self):
         """
-        FRD local frame (F: Forward, R: Right, D: Down)
+        FRD local frame aligned to the vehicle's attitude (x: Forward, y: Right, z: Down) with an origin that travels with vehicle.
         """
         #TODO: Create a subscriber for attitude. Calculate FRD position from Local NED and Orientatio.
         pass
+
+    @property
+    def attitude(self):
+        """
+        The attitude in the aeronautical frame (right-handed, Z-down, Y-right, X-front, ZYX, intrinsic)
+        Roll, Pitch, Yaw in (-pi, pi)
+        """
+        with self.lock:
+            return Attitude(self.roll_rad, self.pitch_rad, self.yaw_rad, self.rollspeed_rad_s, self.pitchspeed_rad_s, self.yawspeed_rad_s)
 
 
 class Status(object):
