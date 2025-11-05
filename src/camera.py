@@ -1,9 +1,3 @@
-# Start pipeline
-# Assemble pipeline
-# Stop pipeline
-# Switch model
-# Calculate pose (fiducial)
-# Calculate pose (nn/depth)
 from multiprocessing import Process, Queue, Event
 from typing import List, Tuple, Optional
 
@@ -31,7 +25,7 @@ DIST_COEFF_ZERO = np.array([0,0,0,0,0], dtype=np.float32)
 CAM_MATRIX = np.array([ 
     [563.78790283, 0.          , 618.17443848],
     [  0.        , 563.56225586, 410.73165894],
-    [  0.        , 0.          , 1.        ]
+    [  0.        , 0.          , 1.          ]
 ], dtype=np.float32)
 
 # [x,y,z] coordinates of each corner
@@ -47,12 +41,6 @@ MARKER_CORNERS_CENTER = np.array([
     [ MARKER_SIZE_M / 2,  MARKER_SIZE_M / 2, 0],  # Top right
     [ MARKER_SIZE_M / 2, -MARKER_SIZE_M / 2, 0],  # Bottom right
     [-MARKER_SIZE_M / 2, -MARKER_SIZE_M / 2, 0]   # Bottom left
-], dtype=np.float32)
-
-FLIP_MATRIX = np.array([
-    [0, 1, 0],
-    [1, 0, 0],
-    [0, 0,-1]
 ], dtype=np.float32)
 
 
@@ -148,6 +136,14 @@ class Camera:
         self.mode = mode
         self.start()
 
+    def draw_center_box(self, frame: np.ndarray):
+        """
+        Draw a square to center of preview window to show approximate alignment between center of marker and center of window.
+        """
+        height, width = frame.shape[:2]
+        pt1 = width // 2 - 10, height // 2 - 10
+        pt2 = width // 2 + 10, height // 2 + 10
+        cv2.rectangle(frame, pt1, pt2, (0,0,255), 1, cv2.LINE_AA)
 
     def process_fiducial_frame(self, frame: np.ndarray, detector: cv2.aruco.ArucoDetector) -> np.ndarray:
         """
@@ -157,22 +153,32 @@ class Camera:
         corners, ids = self.detect_filtered_markers(grey_frame, detector)
 
         if len(ids) == 0 or len(corners) == 0:
+            self.draw_center_box(frame)
             return frame
 
         for i, (marker_corners, marker_id) in enumerate(zip(corners, ids)):
-            success, rvecs, tvecs = cv2.solvePnP(MARKER_CORNERS_CENTER, marker_corners.reshape(-1,2), CAM_MATRIX, DIST_COEFF_ZERO)
+            success, rvec, tvec = cv2.solvePnP(MARKER_CORNERS_CENTER, marker_corners.reshape(-1,2), CAM_MATRIX, DIST_COEFF_ZERO)
 
             if not success:
                 continue
 
-            xyz = tvecs.flatten()
-            self.detection_queue.put(xyz)
+            # Convert tvec from camera frame (+X is horizonal, +Y is vertical) to FRD (+X is forward, +Y is right)
+            tvec = tvec.flatten()
+            delta_xyz_m = [-tvec[1], tvec[0], tvec[2]]
+            self.detection_queue.put(delta_xyz_m)
 
             if self.preview:
                 cv2.aruco.drawDetectedMarkers(frame, [marker_corners], marker_id)
 
-                pixel_coordinates = f"ID: {ids[i][0]} | X: {xyz[0]:.3f}m Y: {xyz[1]:.3f}m Z: {xyz[2]:.3f}m"
+                pixel_coordinates = f"ID: {ids[i][0]} | X: {delta_xyz_m[0]:.3f}m Y: {delta_xyz_m[1]:.3f}m Z: {delta_xyz_m[2]:.3f}m"
                 cv2.putText(frame, pixel_coordinates, (10,100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+
+                marker_center = np.array([0,0,0], dtype=np.float32)
+                marker_center, _ = cv2.projectPoints(marker_center, rvec, tvec, CAM_MATRIX, DIST_COEFF_ZERO)
+                marker_center = tuple(marker_center[0][0].astype(int))
+                cv2.circle(frame, marker_center, 10, (0,255,0), 1)
+
+                self.draw_center_box(frame)
             
         return frame
 
