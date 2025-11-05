@@ -59,6 +59,15 @@ class Location(object):
         """
         with self.lock:
             return MavFrameLocalNed(self.x_north_m, self.y_east_m, self.z_down_m)
+    
+    @property
+    def local_frd(self):
+        """
+        FRD local frame (F: Forward, R: Right, D: Down)
+        """
+        #TODO: Create a subscriber for attitude. Calculate FRD position from Local NED and Orientatio.
+        pass
+
 
 class Status(object):
     """
