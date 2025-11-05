@@ -10,7 +10,7 @@ import time
 
 # Fiducial Properties
 FIDUCIAL_IDS = [0, 4]
-MARKER_SIZE_M = 0.18
+MARKER_SIZE_M = 0.187325
 
 # Camera Properties
 DIST_COEFF = np.array(
@@ -164,7 +164,7 @@ class Camera:
 
             # Convert tvec from camera frame (+X is horizonal, +Y is vertical) to FRD (+X is forward, +Y is right)
             tvec = tvec.flatten()
-            delta_xyz_m = [-tvec[1], tvec[0], tvec[2]]
+            delta_xyz_m = [-1*tvec[1], tvec[0], tvec[2]]
             self.detection_queue.put(delta_xyz_m)
 
             if self.preview:
