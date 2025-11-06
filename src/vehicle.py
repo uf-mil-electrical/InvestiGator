@@ -1,6 +1,7 @@
 import time
 import math
 from multiprocessing import Queue
+from queue import Empty
 
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
@@ -112,7 +113,7 @@ class VehicleManager:
             param7=0.0 
         )
 
-    def move_body_frd_position_and_wait(self, forward_m, right_m, down_m=0, timeout=5):
+    def move_body_frd_position_and_wait(self, forward_m, right_m, down_m=0.0, timeout=5):
         """
         Move relative to vehicle's FRD frame by Forward/Right. Wait for target to be reached.
         Will maintain current altitude by default.
@@ -179,20 +180,41 @@ class VehicleManager:
 
         return MavFrameLocalNed(x_north_m, y_east_m, z_down_m)
     
-    def center_on_marker(self):
+    def center_on_marker(self, timeout=2):
         """
         Center on aruco marker based on detections from detection queue.
         """
         #TODO: Timeout if no detections made for a given time. Move back to last marker detection and see if it is redetected
         # Otherwise, abort the landing and return to launch (RTL)
-
-        pass
+        # 0. While detection are available within the timeout
+        # 1. Get detection
+        # 2. Send target position
+        # 3. Wait for the position to be reached
+        # 4. Descend by some amount
+        # 5. Clear queue before re-looping. Save last detection in case we lose vision of marker.
+        # 6. Refresh timeout, re-loop.
+        # 7. If timeout event, send target back to last detection and height. New timeout.
+        # 8. If second timeout: abort mission, raise exception, return to launch in caller.
+        
+        # TODO: Wait timeout period for first detection to occur
+        # TODO: Clear detection queue before begining loop
+        last_detection = None
+        start_s = time.time()
+        while time.time() - start_s < timeout:
+            # try, except if empty
+            detection = self.detection_queue.get()
+            self.move_body_frd_position_and_wait(forward_m=detection[0], right_m=detection[1])
+            if detection[2] >= 2.5:
+                self.move_body_frd_position_and_wait(forward_m=0, right_m=0, down_m=0.5)
+            else: 
+                break
+            
+            start_s = time.time()
 
     def close(self):
         self.mav_connection.close()
         # TODO: Check that threads in mavconnection are closed correctly
-        # TODO: Close camera here
-
+        self.camera.stop()
 
 if __name__ == "__main__":
     vehicle = VehicleManager("udp:127.0.0.1:14550")
