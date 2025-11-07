@@ -86,14 +86,18 @@ class VehicleManager:
             param7=0.0 
         )
 
-    def wait_for_armed(self):
+    def wait_for_armed(self, timeout=5):
         """
         Wait for vehicle to be armed.
         """
-        #TODO: Implement timeout 
+        #TODO: Implement timeout handling
+        start_s = time.time()
         while not self.status.armed:
+            if time.time() - start_s < timeout:
+                # Exception
+                print("Was not able to arm.")
             self.arm()
-            time.sleep(0.5)
+            time.sleep(0.1)
 
     def arm(self):
         """
@@ -113,40 +117,46 @@ class VehicleManager:
             param7=0.0 
         )
 
-    def move_body_frd_position_and_wait(self, forward_m, right_m, down_m=0.0, timeout=5):
+    def move_body_frd_position(self, forward_m, right_m, down_m=0.0, timeout_s=None):
         """
-        Move relative to vehicle's FRD frame by Forward/Right. Wait for target to be reached.
+        Move relative to vehicle's FRD frame by Forward/Right. Optionally wait for target to be reached within timeout_s seconds.
         Will maintain current altitude by default.
         """
-        ONLY_XY = ~mavlink.POSITION_TARGET_TYPEMASK_X_IGNORE & ~mavlink.POSITION_TARGET_TYPEMASK_Y_IGNORE & ~mavlink.POSITION_TARGET_TYPEMASK_Z_IGNORE
+        ONLY_XYZ = ~mavlink.POSITION_TARGET_TYPEMASK_X_IGNORE & ~mavlink.POSITION_TARGET_TYPEMASK_Y_IGNORE & ~mavlink.POSITION_TARGET_TYPEMASK_Z_IGNORE
         target_ned = self.convert_frd_to_ned(forward_m, right_m, down_m)
 
-        #TODO: Implement timeout handling
-        start_s = time.time()
-        while time.time() - start_s < timeout:
+        self.mav.set_position_target_local_ned_send(
+            time_boot_ms=int(time.time() * 1000),
+            target_system=0,
+            target_component=0,
+            coordinate_frame=mavlink.MAV_FRAME_BODY_FRD,
+            type_mask=ONLY_XYZ,
+            x = forward_m,
+            y = right_m,
+            z = down_m,
+            vx = 0,
+            vy = 0,
+            vz = 0,
+            afx = 0,
+            afy = 0,
+            afz = 0,
+            yaw = 0,
+            yaw_rate = 0
+        )
 
-            self.mav.set_position_target_local_ned_send(
-                time_boot_ms=int(time.time() * 1000),
-                target_system=0,
-                target_component=0,
-                coordinate_frame=mavlink.MAV_FRAME_BODY_FRD,
-                type_mask=ONLY_XY,
-                x = forward_m,
-                y = right_m,
-                z = down_m,
-                vx = 0,
-                vy = 0,
-                vz = 0,
-                afx = 0,
-                afy = 0,
-                afz = 0,
-                yaw = 0,
-                yaw_rate = 0
-            )
+        if timeout_s is not None:
+            start_s = time.time()
+            while True:
 
-            if not self.target_ned_reached(target_ned):
-                time.sleep(0.1)
+                if self.target_ned_reached(target_ned):
+                    break
 
+                if time.time() - start_s < timeout_s:
+                    self.move_body_frd_position(0,0,0)
+                    # TODO: Return error code or exception
+                    break
+
+            time.sleep(0.1)
 
     def move_global_gps(self):
         pass
@@ -180,11 +190,20 @@ class VehicleManager:
 
         return MavFrameLocalNed(x_north_m, y_east_m, z_down_m)
     
-    def center_on_marker(self, timeout=2):
+    def clear_detection_queue(self):
+        """
+        Clear detection queue by reading all items non-blocking.
+        """
+        while True:
+            try:
+                self.detection_queue.get_nowait()
+            except Empty:
+                break
+    
+    def center_on_marker(self, timeout_s=5, target_distance_m=2.0, rover=False):
         """
         Center on aruco marker based on detections from detection queue.
         """
-        #TODO: Timeout if no detections made for a given time. Move back to last marker detection and see if it is redetected
         # Otherwise, abort the landing and return to launch (RTL)
         # 0. While detection are available within the timeout
         # 1. Get detection
@@ -196,20 +215,28 @@ class VehicleManager:
         # 7. If timeout event, send target back to last detection and height. New timeout.
         # 8. If second timeout: abort mission, raise exception, return to launch in caller.
         
-        # TODO: Wait timeout period for first detection to occur
-        # TODO: Clear detection queue before begining loop
-        last_detection = None
+        last_detection_ned_position = None
         start_s = time.time()
-        while time.time() - start_s < timeout:
-            # try, except if empty
-            detection = self.detection_queue.get()
-            self.move_body_frd_position_and_wait(forward_m=detection[0], right_m=detection[1])
-            if detection[2] >= 2.5:
-                self.move_body_frd_position_and_wait(forward_m=0, right_m=0, down_m=0.5)
+
+        while time.time() - start_s < timeout_s:
+            try:
+                detection = self.detection_queue.get(timeout=0.5)
+                last_detection_ned_position = self.location.local_ned
+            except Empty:
+                if last_detection_ned_position is not None:
+                    #self.move_global_ned_position(last_detection_ned_position, timeout_s=timeout_s-1)
+                    last_detection_ned_position = None
+                continue
+
+            self.move_body_frd_position(forward_m=detection[0], right_m=detection[1])
+            if detection[2] >= target_distance_m + 0.2:
+                self.move_body_frd_position(forward_m=0, right_m=0, down_m=0.2)
             else: 
                 break
             
+            self.clear_detection_queue()
             start_s = time.time()
+        
 
     def close(self):
         self.mav_connection.close()
