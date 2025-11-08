@@ -1,5 +1,6 @@
 from multiprocessing import Process, Queue, Event
 from typing import List, Tuple, Optional
+from collections import namedtuple
 
 import depthai as dai
 import numpy as np
@@ -43,6 +44,7 @@ MARKER_CORNERS_CENTER = np.array([
     [-MARKER_SIZE_M / 2, -MARKER_SIZE_M / 2, 0]   # Bottom left
 ], dtype=np.float32)
 
+MarkerDetection = namedtuple("MarkerDetection",["X_Offset_m", "Y_Offset_m", "Z_Offset_m"])
 
 class Camera:
     """
@@ -56,7 +58,7 @@ class Camera:
 
     def __init__(self, detection_queue: Queue, preview: bool = False):
         
-        self.detection_queue = detection_queue
+        self.detection_queue: Queue[MarkerDetection] = detection_queue
         self.preview = preview
         self.running = Event()
 
@@ -164,7 +166,7 @@ class Camera:
 
             # Convert tvec from camera frame (+X is horizonal, +Y is vertical) to FRD (+X is forward, +Y is right)
             tvec = tvec.flatten()
-            delta_xyz_m = [-1*tvec[1], tvec[0], tvec[2]]
+            delta_xyz_m = MarkerDetection(-1*tvec[1], tvec[0], tvec[2])
             self.detection_queue.put(delta_xyz_m)
 
             if self.preview:

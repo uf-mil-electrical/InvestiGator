@@ -8,7 +8,7 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
 from mavconnection import MAVConnection
 from vehicle_properties import Location, Status, MavFrameLocalNed
-from camera import Camera
+from camera import Camera, MarkerDetection
 
 radio = "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTDCKG37-if00-port0"
 simulation = 'udp:127.0.0.1:14550'
@@ -23,7 +23,7 @@ class VehicleManager:
         self.mav_connection = MAVConnection(address, baud)
         self.mode_map = mavutil.mode_mapping_byname(mavlink.MAV_TYPE_QUADROTOR)
 
-        self.detection_queue: Queue = Queue()
+        self.detection_queue: Queue[MarkerDetection] = Queue()
         self.camera = Camera(self.detection_queue)
 
         self.publish = self.mav_connection.publish
@@ -93,7 +93,7 @@ class VehicleManager:
         #TODO: Implement timeout handling
         start_s = time.time()
         while not self.status.armed:
-            if time.time() - start_s < timeout:
+            if time.time() - start_s > timeout:
                 # Exception
                 print("Was not able to arm.")
             self.arm()
@@ -151,8 +151,25 @@ class VehicleManager:
                 if self.target_ned_reached(target_ned):
                     break
 
-                if time.time() - start_s < timeout_s:
-                    self.move_body_frd_position(0,0,0)
+                if time.time() - start_s > timeout_s:
+                    self.mav.set_position_target_local_ned_send(
+                        time_boot_ms=int(time.time() * 1000),
+                        target_system=0,
+                        target_component=0,
+                        coordinate_frame=mavlink.MAV_FRAME_BODY_FRD,
+                        type_mask=ONLY_XYZ,
+                        x = 0,
+                        y = 0,
+                        z = 0,
+                        vx = 0,
+                        vy = 0,
+                        vz = 0,
+                        afx = 0,
+                        afy = 0,
+                        afz = 0,
+                        yaw = 0,
+                        yaw_rate = 0
+                    )
                     # TODO: Return error code or exception
                     break
 
@@ -227,14 +244,29 @@ class VehicleManager:
                     #self.move_global_ned_position(last_detection_ned_position, timeout_s=timeout_s-1)
                     last_detection_ned_position = None
                 continue
-
-            self.move_body_frd_position(forward_m=detection[0], right_m=detection[1])
-            if detection[2] >= target_distance_m + 0.2:
-                self.move_body_frd_position(forward_m=0, right_m=0, down_m=0.2)
-            else: 
-                break
             
+            threshold_m = 0.1
+            forward_m = max(-threshold_m, min(detection.X_Offset_m, threshold_m))
+            right_m = max(-threshold_m, min(detection.Y_Offset_m, threshold_m))
+
+            if abs(detection.X_Offset_m) < threshold_m:
+                forward_m = 0.0                
+
+            if abs(detection.Y_Offset_m) < threshold_m:
+                right_m = 0.0
+            
+            self.move_body_frd_position(forward_m, right_m)
+
+            if abs(detection.X_Offset_m) < threshold_m and abs(detection.Y_Offset_m) < threshold_m:
+                self.move_body_frd_position(0.0,0.0,0.0)
+
+                if detection.Z_Offset_m >= 2.5:
+                    self.move_body_frd_position(forward_m=0.0, right_m=0.0, down_m=0.5)
+                else:
+                    break
+            print(forward_m, right_m, detection.Z_Offset_m)
             self.clear_detection_queue()
+            time.sleep(0.1)
             start_s = time.time()
         
 
@@ -245,4 +277,5 @@ class VehicleManager:
 
 if __name__ == "__main__":
     vehicle = VehicleManager("udp:127.0.0.1:14550")
+    vehicle.center_on_marker()
     vehicle.close()
