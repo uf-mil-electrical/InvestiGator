@@ -172,3 +172,6 @@ cython_debug/
 
 # Recordings
 recordings/
+.depthai_cached_models/.locks/98fa008f114a052fc110a400b9f2526e541e7c72.lock
+.depthai_cached_models/98fa008f114a052fc110a400b9f2526e541e7c72/metadata.yaml
+.depthai_cached_models/98fa008f114a052fc110a400b9f2526e541e7c72/YOLOv6_Nano-R2_COCO_512x288.rvc2.tar.xz

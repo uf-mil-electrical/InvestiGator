@@ -7,7 +7,7 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
 from mavconnection import MAVConnection
-from vehicle_properties import Location, Status, MavFrameLocalNed
+from vehicle_properties import Location, Status, MavFrameLocalNed, MavFrameGlobal
 from camera import Camera, MarkerDetection
 
 radio = "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTDCKG37-if00-port0"
@@ -24,14 +24,14 @@ class VehicleManager:
         self.mode_map = mavutil.mode_mapping_byname(mavlink.MAV_TYPE_QUADROTOR)
 
         self.detection_queue: Queue[MarkerDetection] = Queue()
-        self.camera = Camera(self.detection_queue)
+        self.camera = Camera(self.detection_queue, preview=True)
 
         self.publish = self.mav_connection.publish
         self.publish_function = self.mav_connection.publish_function
         self.unpublish = self.mav_connection.unpublish
         self.subscribe = self.mav_connection.subscribe
 
-        self.mav = self.mav_connection.mav_connection.mav
+        self.mav = self.mav_connection.mav_connection.mav # type: ignore
 
         self.location = Location(self)
         self.status = Status(self)
@@ -46,17 +46,17 @@ class VehicleManager:
                 system_status=0
             )
 
-    def takeoff(self, alt_m):
+    def takeoff(self, alt_m, timeout_s=None, threshold_m=0.1):
         """
         Wait for vehicle to arm and take off to alt_m meters.
         """
         if not self.status.armed:
-            # TODO: Log this as an error and raise an exception. Remove this auto arming.
+            # TODO: Log this as an error
             self.wait_for_armed()
 
         self.mav.command_long_send(
-            target_system=0,
-            target_component=0,
+            target_system=1,
+            target_component=1,
             command=mavlink.MAV_CMD_NAV_TAKEOFF,
             confirmation=0,
             param1=0.0,
@@ -68,12 +68,21 @@ class VehicleManager:
             param7=alt_m
         )
 
+        if timeout_s is not None:
+            start_s = time.time()
+            while True: 
+                if time.time() - start_s > timeout_s:
+                    return False
+                if abs(self.location.relative_alt_m - alt_m) < threshold_m:
+                    return True
+                time.sleep(1)
+
     def land(self):
         """
         Land the vehicle.
         """
         self.mav.command_long_send(
-            target_system=0,
+            target_system=1,
             target_component=0,
             command=mavlink.MAV_CMD_NAV_LAND,
             confirmation=0,
@@ -97,15 +106,15 @@ class VehicleManager:
                 # Exception
                 print("Was not able to arm.")
             self.arm()
-            time.sleep(0.1)
+            time.sleep(1)
 
     def arm(self):
         """
         Arm vehicle.
         """
         self.mav.command_long_send(
-            target_system=0,
-            target_component=0,
+            target_system=1,
+            target_component=1,
             command=mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
             confirmation=0,
             param1=1.0,
@@ -117,20 +126,29 @@ class VehicleManager:
             param7=0.0 
         )
 
-    def move_body_frd_position(self, forward_m, right_m, down_m=0.0, timeout_s=None):
+    def move_body_frd_position(self, forward_m, right_m, down_m=0.0, maintain_heading=True, timeout_s=None):
         """
         Move relative to vehicle's FRD frame by Forward/Right. Optionally wait for target to be reached within timeout_s seconds.
         Will maintain current altitude by default.
         """
-        ONLY_XYZ = ~mavlink.POSITION_TARGET_TYPEMASK_X_IGNORE & ~mavlink.POSITION_TARGET_TYPEMASK_Y_IGNORE & ~mavlink.POSITION_TARGET_TYPEMASK_Z_IGNORE
+        XYZ_POS = mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE & \
+        mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE & \
+        mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
+
+        XYZ_POS_YAW = XYZ_POS & mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE
+
+        typemask = XYZ_POS
+        if not maintain_heading:
+            typemask = XYZ_POS_YAW
+
         target_ned = self.convert_frd_to_ned(forward_m, right_m, down_m)
 
         self.mav.set_position_target_local_ned_send(
-            time_boot_ms=int(time.time() * 1000),
-            target_system=0,
+            time_boot_ms=0,
+            target_system=1,
             target_component=0,
-            coordinate_frame=mavlink.MAV_FRAME_BODY_FRD,
-            type_mask=ONLY_XYZ,
+            coordinate_frame=mavlink.MAV_FRAME_BODY_NED,
+            type_mask=typemask,
             x = forward_m,
             y = right_m,
             z = down_m,
@@ -153,11 +171,11 @@ class VehicleManager:
 
                 if time.time() - start_s > timeout_s:
                     self.mav.set_position_target_local_ned_send(
-                        time_boot_ms=int(time.time() * 1000),
-                        target_system=0,
+                        time_boot_ms=0,
+                        target_system=1,
                         target_component=0,
                         coordinate_frame=mavlink.MAV_FRAME_BODY_FRD,
-                        type_mask=ONLY_XYZ,
+                        type_mask=0b110111111000,
                         x = 0,
                         y = 0,
                         z = 0,
@@ -175,11 +193,65 @@ class VehicleManager:
 
             time.sleep(0.1)
 
-    def move_global_gps(self):
-        pass
+    def move_global_gps(self, lat_int: int, lon_int: int, alt_m: int):
+        """
+        Move to the given GPS WGS84 coordinates.
+        """
+        #TODO: Test if heading is maintained or not during only lat/lon movement.
+        # If heading is not maintained, use current heading or default to point northward (OR! Home heading?)
+        self.mav.set_position_target_global_int_send(
+            time_boot_ms=0,
+            target_system=1,
+            target_component=0,
+            coordinate_frame=mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
+            type_mask=0,
+            lat_int=lat_int,
+            lon_int=lon_int,
+            alt=alt_m,
+            vx=0,
+            vy=0,
+            vz=0,
+            afx=0,
+            afy=0,
+            afz=0,
+            yaw=0,
+            yaw_rate=0
+        )
 
-    def set_mode(self, mode):
-        pass
+    def set_mode(self, target_mode: str, timeout_s=None):
+        """
+        Change mode of the flight controller. See: https://ardupilot.org/copter/docs/parameters.html#fltmode1
+        Common modes: 'GUIDED', 'LAND', 'CIRCLE'
+        """
+        # TODO: If timeout, return false
+        if self.mode_map is None:
+            return False
+        
+        target_mode_int = self.mode_map[target_mode]
+
+        while not self.check_mode(target_mode=target_mode):
+            self.mav.command_long_send(
+                target_system=1,
+                target_component=1,
+                command=mavlink.MAV_CMD_DO_SET_MODE,
+                confirmation=0,
+                param1=mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 
+                param2=target_mode_int,
+                param3=0.0,
+                param4=0.0,
+                param5=0.0,
+                param6=0.0,
+                param7=0.0 
+            )
+            time.sleep(1)
+
+    def check_mode(self, target_mode: str) -> bool:
+        """
+        Return if current mode is equal to target_mode. 
+        """
+        if self.status.custom_mode is not None and self.mode_map is not None:
+            return self.status.custom_mode == self.mode_map[target_mode]
+        return False
 
     def target_ned_reached(self, target_ned: MavFrameLocalNed, threshold_m=0.1) -> bool:
         """
@@ -245,7 +317,7 @@ class VehicleManager:
                     last_detection_ned_position = None
                 continue
             
-            threshold_m = 0.1
+            threshold_m = 0.5
             forward_m = max(-threshold_m, min(detection.X_Offset_m, threshold_m))
             right_m = max(-threshold_m, min(detection.Y_Offset_m, threshold_m))
 
@@ -260,7 +332,7 @@ class VehicleManager:
             if abs(detection.X_Offset_m) < threshold_m and abs(detection.Y_Offset_m) < threshold_m:
                 self.move_body_frd_position(0.0,0.0,0.0)
 
-                if detection.Z_Offset_m >= 2.5:
+                if detection.Z_Offset_m >= target_distance_m:
                     self.move_body_frd_position(forward_m=0.0, right_m=0.0, down_m=0.5)
                 else:
                     break
@@ -269,6 +341,43 @@ class VehicleManager:
             time.sleep(0.1)
             start_s = time.time()
         
+    def detect_multiple_objects(self):
+        """
+        For testing detection of several of the same objects close to each other. Report unique GPS coordinates of each object.
+        """
+        pass
+
+    def search_for_detection(self, object_to_detect: str):
+        """
+        Perform a spiral search of the given object.
+        """
+
+        self.camera.switch_mode(object_to_detect)
+        
+        # Change mode to circle
+        center_gps = self.location.global_frame
+        self.circle(radius_cm=100, center_gps=center_gps)
+        # Perform 4 spirals of increasing radius, waiting for the queue to become empty
+        # Return true if search finds the target, false otherwise
+        # Change mode back to guided once done
+
+    def circle(self, radius_cm, center_gps: MavFrameGlobal):
+        """
+        Perform a circle with given radius and center.
+        """
+
+        self.move_global_gps(center_gps.lattitude_int, center_gps.longitude_int, center_gps.altitude_m)
+        time.sleep(4)
+
+        self.mav.param_set_send(
+            target_system=1,
+            target_component=0,
+            param_id="CIRCLE_RADIUS".encode('utf-8'),
+            param_value=radius_cm, # cm
+            param_type=10
+        )
+        
+        self.set_mode("CIRCLE")
 
     def close(self):
         self.mav_connection.close()
@@ -277,5 +386,24 @@ class VehicleManager:
 
 if __name__ == "__main__":
     vehicle = VehicleManager("udp:127.0.0.1:14550")
-    vehicle.center_on_marker()
+    vehicle.camera.switch_mode("UAV Recovery")
+    vehicle.camera.start()
+    vehicle.set_mode(target_mode="GUIDED")
+    vehicle.wait_for_armed()
+    vehicle.set_mode(target_mode="GUIDED")
+    vehicle.takeoff(alt_m=10, timeout_s=5)
+
+    # vehicle.move_body_frd_position(forward_m=5, right_m=4, down_m=-10, timeout_s=10)
+
+    # print("Starting centering mission")
+    # vehicle.center_on_marker(target_distance_m=0.2, timeout_s=100)
+    center = vehicle.location.global_frame
+    print("Circle 1")
+    vehicle.circle(100, center)
+    print("Circle 2")
+    vehicle.circle(200, center)
+
+    vehicle.land()
+    print("DONE")
+
     vehicle.close()

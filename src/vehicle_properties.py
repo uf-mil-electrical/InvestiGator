@@ -3,9 +3,9 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from collections import namedtuple
 from threading import Lock
 
-MavFrameGlobal = namedtuple("MavFrameGlobal", ["lattitude_deg", "longitude_deg", "altitude_m"])
+MavFrameGlobal = namedtuple("MavFrameGlobal", ["lattitude_int", "longitude_int", "altitude_m"])
 MavFrameLocalNed = namedtuple("LocalNED", ["x_north_m", "y_east_m", "z_down_m"])
-MavFrameGlobalRel = namedtuple("GlobalRelative",["lattitude_deg", "longitude_deg", "altitude_rel_m"])
+MavFrameGlobalRel = namedtuple("GlobalRelative",["lattitude_int", "longitude_int", "altitude_rel_m"])
 MavFrameLocalENU = namedtuple("LocalENU", ["x_east_m", "y_north_m", "z_up_m"])
 MavFrameLocalOffsetNED = namedtuple("LocalOffsetNED", ["x_north_m", "y_east_m", "z_down_m"])
 MavFrameBodyFRD = namedtuple("BodyFRD", ["x_forward_m", "y_right_m", "z_down_m"])
@@ -21,8 +21,8 @@ class Location(object):
     def __init__(self, vehicle):
         self.lock = Lock()
 
-        self.lat_deg = None
-        self.lon_deg = None
+        self.lat_int = None
+        self.lon_int = None
         self.alt_m = None
         self.relative_alt_m = None
 
@@ -40,9 +40,9 @@ class Location(object):
         @vehicle.subscribe(mavlink.mavlink_map[mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT].msgname)
         def update_global_position(message: mavlink.MAVLink_global_position_int_message):
             with self.lock:
-                self.lat_deg = message.lat / 1E7
-                self.lon_deg = message.lon / 1E7
-                self.alt_m = message.alt / 1E3  # Given in mm
+                self.lat_int = message.lat # Divide by 1E7 to convert to degrees
+                self.lon_int = message.lon # Divide by 1E7 to convert to degrees
+                self.alt_m = message.alt / 1E3 # Given in mm
                 self.relative_alt_m = message.relative_alt / 1E3  # Given in mm
 
         @vehicle.subscribe(mavlink.MAVLink_local_position_ned_message.msgname)
@@ -68,7 +68,15 @@ class Location(object):
         Returns location as a MAV_FRAME_GLOBAL frame. Global (WGS84) coordinate frame + altitude relative to mean sea level (MSL).
         """
         with self.lock:
-            return MavFrameGlobal(self.lat_deg, self.lon_deg, self.alt_m)
+            return MavFrameGlobal(self.lat_int, self.lon_int, self.alt_m)
+        
+    @property
+    def global_frame_relative(self):
+        """
+        Returns location as a MAV_FRAME_GLOBAL frame. Global (WGS84) coordinate frame + altitude relative to mean sea level (MSL).
+        """
+        with self.lock:
+            return MavFrameGlobalRel(self.lat_int, self.lon_int, self.relative_alt_m)
 
     @property
     def local_ned(self):
@@ -104,14 +112,14 @@ class Status(object):
     def __init__(self, vehicle):
         self.lock = Lock()
         self.mode_dict = mavlink.enums["COPTER_MODE"]
-        self.mode: int
-        self.type: int
-        self.autopilot: int
-        self.base_mode: int
-        self.custom_mode: int
-        self.system_status: int
+        self.mode = None
+        self.type = None
+        self.autopilot = None
+        self.base_mode = None
+        self.custom_mode = None
+        self.system_status = None
 
-        @vehicle.subscribe("Heartbeat")
+        @vehicle.subscribe("HEARTBEAT")
         def subscription_update(message: mavlink.MAVLink_heartbeat_message):
             with self.lock:
                 self.type = message.type
@@ -123,6 +131,8 @@ class Status(object):
     @property
     def armed(self):
         with self.lock:
+            if self.base_mode is None:
+                return False
             return bool(self.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
 
     # @property

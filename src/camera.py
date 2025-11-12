@@ -2,7 +2,6 @@ from multiprocessing import Process, Queue, Event
 from typing import List, Tuple, Optional
 from collections import namedtuple
 
-import depthai as dai
 import numpy as np
 import cv2
 import time
@@ -188,6 +187,8 @@ class Camera:
         """
         Process images from camera and output detection data to detection_queue.
         """
+        import depthai as dai
+
         with dai.Pipeline() as pipeline:
             cam = pipeline.create(dai.node.Camera).build(dai.CameraBoardSocket.CAM_A)
             
