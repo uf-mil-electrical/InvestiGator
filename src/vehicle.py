@@ -46,7 +46,7 @@ class VehicleManager:
                 system_status=0
             )
 
-    def takeoff(self, alt_m, timeout_s=None, threshold_m=0.1):
+    def takeoff(self, alt_m, timeout_s=15, threshold_m=0.1):
         """
         Wait for vehicle to arm and take off to alt_m meters.
         """
@@ -71,6 +71,8 @@ class VehicleManager:
         if timeout_s is not None:
             start_s = time.time()
             while True: 
+                print("Distance to takeoff altitude: ")
+                print(self.location.relative_alt_m - alt_m)
                 if time.time() - start_s > timeout_s:
                     return False
                 if abs(self.location.relative_alt_m - alt_m) < threshold_m:
@@ -81,6 +83,7 @@ class VehicleManager:
         """
         Land the vehicle.
         """
+        print("Start Land Mode")
         self.mav.command_long_send(
             target_system=1,
             target_component=0,
@@ -354,14 +357,39 @@ class VehicleManager:
 
         self.camera.switch_mode(object_to_detect)
         
-        # Change mode to circle
         center_gps = self.location.global_frame
-        self.circle(radius_cm=100, center_gps=center_gps)
-        # Perform 4 spirals of increasing radius, waiting for the queue to become empty
-        # Return true if search finds the target, false otherwise
-        # Change mode back to guided once done
 
-    def circle(self, radius_cm, center_gps: MavFrameGlobal):
+        print("Starting first Circle")
+
+        self.circle(radius_m=0.1, center_gps=center_gps)
+        start_s = time.time()
+        while self.detection_queue.empty():
+            if time.time() - start_s > 16:
+                break
+            time.sleep(0.5)
+
+        self.set_mode("GUIDED")
+        
+        if not self.detection_queue.empty():
+            return self.location.global_frame_relative
+        
+        print("Starting second Circle")
+
+        self.circle(radius_m=0.5, center_gps=center_gps)
+        start_s = time.time()
+        while self.detection_queue.empty():
+            if time.time() - start_s > 16:
+                break
+            time.sleep(0.5)
+
+        self.set_mode("GUIDED")
+        
+        if not self.detection_queue.empty():
+            return self.location.global_frame_relative
+        
+        return None
+
+    def circle(self, radius_m, center_gps: MavFrameGlobal):
         """
         Perform a circle with given radius and center.
         """
@@ -373,7 +401,7 @@ class VehicleManager:
             target_system=1,
             target_component=0,
             param_id="CIRCLE_RADIUS".encode('utf-8'),
-            param_value=radius_cm, # cm
+            param_value=radius_m * 1E2, # cm
             param_type=10
         )
         
@@ -387,23 +415,18 @@ class VehicleManager:
 if __name__ == "__main__":
     vehicle = VehicleManager("udp:127.0.0.1:14550")
     vehicle.camera.switch_mode("UAV Recovery")
-    vehicle.camera.start()
     vehicle.set_mode(target_mode="GUIDED")
     vehicle.wait_for_armed()
-    vehicle.set_mode(target_mode="GUIDED")
-    vehicle.takeoff(alt_m=10, timeout_s=5)
+    vehicle.takeoff(alt_m=10)
 
-    # vehicle.move_body_frd_position(forward_m=5, right_m=4, down_m=-10, timeout_s=10)
+    vehicle.move_body_frd_position(forward_m=5, right_m=4, down_m=-10, timeout_s=20)
+    print("Positioned for search.")
+    detection_gps = vehicle.search_for_detection("UAV Recovery")
+    print("Search Complete")
+    if detection_gps is not None:
+        vehicle.center_on_marker(timeout_s=100, target_distance_m=0.25)
 
-    # print("Starting centering mission")
-    # vehicle.center_on_marker(target_distance_m=0.2, timeout_s=100)
-    center = vehicle.location.global_frame
-    print("Circle 1")
-    vehicle.circle(100, center)
-    print("Circle 2")
-    vehicle.circle(200, center)
-
-    vehicle.land()
+    vehicle.set_mode("LAND")
     print("DONE")
 
     vehicle.close()
