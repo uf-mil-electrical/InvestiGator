@@ -71,7 +71,7 @@ class PublicationManager:
     def __init__(self, send_queue: Queue):
         self.publishing = {}
         self.send_queue = send_queue
-        self.shortest_period = None
+        self.shortest_period = 1
         self.running = Event()
         self.running.set()
 
