@@ -2,6 +2,7 @@ import time
 import math
 from multiprocessing import Queue
 from queue import Empty
+from enum import Enum
 
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
@@ -13,14 +14,16 @@ from camera import Camera, MarkerDetection
 radio = "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTDCKG37-if00-port0"
 simulation = 'udp:127.0.0.1:14550'
 
+System = Enum('System', [('INVESTIGATOR', 37), ('ROVER', 44), ('NAVIGATOR', 47), ('SUBJUGATOR', 59), ('GROUND_CONTROL', 255)])
+
 
 class VehicleManager:
     """
     Represents properties of a vehicle and handles communication with it.
     """
 
-    def __init__(self, address, baud=115200):
-        self.mav_connection = MAVConnection(address, baud)
+    def __init__(self, address, source_system: System, baud=115200):
+        self.mav_connection = MAVConnection(address, baud, source_system=source_system.value)
         self.mode_map = mavutil.mode_mapping_byname(mavlink.MAV_TYPE_QUADROTOR)
 
         self.detection_queue: Queue[MarkerDetection] = Queue()
@@ -31,20 +34,20 @@ class VehicleManager:
         self.unpublish = self.mav_connection.unpublish
         self.subscribe = self.mav_connection.subscribe
 
-        self.mav = self.mav_connection.mav_connection.mav # type: ignore
+        self.mav = self.mav_connection.mav_connection.mav
 
         self.location = Location(self)
         self.status = Status(self)
 
-        @self.publish('HEARTBEAT', 1)
-        def publish_heartbeat():
-            self.mav.heartbeat_send(
-                type=mavlink.MAV_TYPE_ONBOARD_CONTROLLER,
-                autopilot=mavlink.MAV_AUTOPILOT_INVALID,
-                base_mode=0,
-                custom_mode=0,
-                system_status=0
-            )
+        # @self.publish('HEARTBEAT', 1)
+        # def publish_heartbeat():
+        #     self.mav.heartbeat_send(
+        #         type=mavlink.MAV_TYPE_ONBOARD_CONTROLLER,
+        #         autopilot=mavlink.MAV_AUTOPILOT_INVALID,
+        #         base_mode=0,
+        #         custom_mode=0,
+        #         system_status=0
+        #     )
 
     def takeoff(self, alt_m, timeout_s=15, threshold_m=0.1):
         """
@@ -413,7 +416,7 @@ class VehicleManager:
         self.camera.stop()
 
 if __name__ == "__main__":
-    vehicle = VehicleManager("udp:127.0.0.1:14550")
+    vehicle = VehicleManager("udp:127.0.0.1:14550", source_system=System.INVESTIGATOR)
     vehicle.camera.switch_mode("UAV Recovery")
     vehicle.set_mode(target_mode="GUIDED")
     vehicle.wait_for_armed()
