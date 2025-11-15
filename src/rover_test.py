@@ -11,11 +11,7 @@ System = Enum('System', [('INVESTIGATOR', 37), ('ROVER', 44), ('NAVIGATOR', 47),
 
 if __name__ == "__main__":
 
-    ground_control = MAVConnection(address=ground_control_address, baud=57600, source_system=System.GROUND_CONTROL.value)
-    
-    @ground_control.subscribe(mavlink.MAVLink_heartbeat_message.msgname)
-    def print_rover_heartbeat(message: mavlink.MAVLink_heartbeat_message):
-        print("Received heartbeat from rover!")
-    
+    rover_control = MAVConnection(address=rover_address, baud=57600, source_system=System.ROVER.value)
+
     while True:
         continue
