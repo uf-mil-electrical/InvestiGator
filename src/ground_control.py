@@ -6,7 +6,7 @@ import sys
 
 System = Enum('System', [('INVESTIGATOR', 37), ('ROVER', 44), ('NAVIGATOR', 47), ('SUBJUGATOR', 59), ('GROUND_CONTROL', 255)])
 
-SIMULATION_RADIO = 'udpin:0.0.0.0:14550' 
+SIMULATION_RADIO = 'udpin:10.0.0.207:14550' 
 GROUND_CONTROL_RADIO_LINUX = "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTDCKG37-if00-port0"
 
 def initialize() -> MAVConnection:
@@ -20,20 +20,23 @@ def initialize() -> MAVConnection:
 
     mode = input("Select mode [1-2]: ")
 
+    address = None
+
     if mode == '1':
         if platform.system == 'Linux':
-            connection = MAVConnection(GROUND_CONTROL_RADIO_LINUX)
+            address = GROUND_CONTROL_RADIO_LINUX
 
         elif platform.system == 'Windows':
-            com_port = input("Enter COM Port for Radio (COMx): ")
-            connection = MAVConnection(com_port)
+            address = input("Enter COM Port for Radio (COMx): ")
         
         else:
             print("Platform not supported. Please use Windows or Linux.")
             sys.exit(1)
 
     elif mode == '2':
-        connection = MAVConnection(SIMULATION_RADIO)
+        address = SIMULATION_RADIO
+
+    connection = MAVConnection(address, source_system=System.GROUND_CONTROL.value)
 
     return connection
 
@@ -48,5 +51,7 @@ if __name__ == "__main__":
 
     connection = initialize()
     print("Connection made!")
+    
+    connection.close()
 
     
