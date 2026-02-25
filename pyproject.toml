@@ -3,7 +3,7 @@ name = "InvestiGator"
 version = "0.1.0"
 description = "Drone Control Suite for University of Florida's Machine Intelligence Lab"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = "==3.13.2"
 dependencies = [
     "depthai==3.3.0",
     "future==1.0.0",
