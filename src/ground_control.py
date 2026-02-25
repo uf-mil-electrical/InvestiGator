@@ -9,6 +9,8 @@ System = Enum('System', [('INVESTIGATOR', 37), ('ROVER', 44), ('NAVIGATOR', 47),
 SIMULATION_RADIO = 'udpin:10.0.0.207:14550' 
 GROUND_CONTROL_RADIO_LINUX = "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTDCKG37-if00-port0"
 
+INVGATOR = "InvGator".encode('utf-8')
+
 def initialize() -> MAVConnection:
     """
     Prompt user for system connection mode. The connection is made to a simulated radio or hardware radio connected via USB. 
@@ -40,18 +42,43 @@ def initialize() -> MAVConnection:
 
     return connection
 
-def mission_select():
+def mission_select() -> str:
     """
     Prompt user for mission selection from list of known missions.
     """
     print("--- Select Mission ---")
+    print("1) Mission 1: UAV Recovery")
+    print("2) Mission 2: Close Drone Connection")
 
+    return input("Select mission [1-2]: ")
 
 if __name__ == "__main__":
 
     connection = initialize()
     print("Connection made!")
-    
+
+    mission_selection = mission_select()
+
+    while True:
+        if mission_selection == None:
+            mission_selection = mission_select()
+            
+        if mission_selection == '1':
+            print("Starting Mission 1")
+            connection.mav_connection.mav.named_value_int_send(
+                time_boot_ms = 0, 
+                name = INVGATOR, 
+                value = 1)
+            mission_selection = None
+
+        elif mission_selection == '2':
+            print("Starting Mission 2. Closing connection.")
+            connection.mav_connection.mav.named_value_int_send(
+                time_boot_ms = 0, 
+                name = INVGATOR, 
+                value = 2)
+            break
+
     connection.close()
 
     
