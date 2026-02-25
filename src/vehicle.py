@@ -10,6 +10,7 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from mavconnection import MAVConnection
 from vehicle_properties import Location, Status, MavFrameLocalNed, MavFrameGlobal
 from camera import Camera, MarkerDetection
+from constants import Radio, Robot
 
 radio = "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTDCKG37-if00-port0"
 simulation = 'udp:127.0.0.1:14550'
@@ -22,8 +23,8 @@ class VehicleManager:
     Represents properties of a vehicle and handles communication with it.
     """
 
-    def __init__(self, address, source_system: System, baud=115200):
-        self.mav_connection = MAVConnection(address, baud, source_system=source_system.value)
+    def __init__(self, mav_connection: MAVConnection, baud=115200):
+        self.mav_connection = mav_connection
         self.mode_map = mavutil.mode_mapping_byname(mavlink.MAV_TYPE_QUADROTOR)
 
         self.detection_queue: Queue[MarkerDetection] = Queue()
@@ -411,25 +412,26 @@ class VehicleManager:
         self.set_mode("CIRCLE")
 
     def close(self):
-        self.mav_connection.close()
+        #self.mav_connection.close()
         # TODO: Check that threads in mavconnection are closed correctly
         self.camera.stop()
 
-if __name__ == "__main__":
-    vehicle = VehicleManager("udp:127.0.0.1:14550", source_system=System.INVESTIGATOR)
-    vehicle.camera.switch_mode("UAV Recovery")
-    vehicle.set_mode(target_mode="GUIDED")
-    vehicle.wait_for_armed()
-    vehicle.takeoff(alt_m=10)
+# if __name__ == "__main__":
+    
+    # vehicle = VehicleManager("udp:127.0.0.1:14550", source_system=System.INVESTIGATOR)
+    # vehicle.camera.switch_mode("UAV Recovery")
+    # vehicle.set_mode(target_mode="GUIDED")
+    # vehicle.wait_for_armed()
+    # vehicle.takeoff(alt_m=10)
 
-    vehicle.move_body_frd_position(forward_m=5, right_m=4, down_m=-10, timeout_s=20)
-    print("Positioned for search.")
-    detection_gps = vehicle.search_for_detection("UAV Recovery")
-    print("Search Complete")
-    if detection_gps is not None:
-        vehicle.center_on_marker(timeout_s=100, target_distance_m=0.25)
+    # vehicle.move_body_frd_position(forward_m=5, right_m=4, down_m=-10, timeout_s=20)
+    # print("Positioned for search.")
+    # detection_gps = vehicle.search_for_detection("UAV Recovery")
+    # print("Search Complete")
+    # if detection_gps is not None:
+    #     vehicle.center_on_marker(timeout_s=100, target_distance_m=0.25)
 
-    vehicle.set_mode("LAND")
-    print("DONE")
+    # vehicle.set_mode("LAND")
+    # print("DONE")
 
-    vehicle.close()
+    # vehicle.close()
