@@ -1,15 +1,13 @@
 from mavconnection import MAVConnection
-from enum import Enum
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 import platform
 import sys
+from constants import Robot, Radio
+from pymavlink import mavutil
 
-System = Enum('System', [('INVESTIGATOR', 37), ('ROVER', 44), ('NAVIGATOR', 47), ('SUBJUGATOR', 59), ('GROUND_CONTROL', 255)])
-
-SIMULATION_RADIO = 'udpin:10.0.0.207:14550' 
+SIMULATION_RADIO = 'udpin:127.0.0.1:14552' 
 GROUND_CONTROL_RADIO_LINUX = "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTDCKG37-if00-port0"
 
-INVGATOR = "InvGator".encode('utf-8')
 
 def initialize() -> MAVConnection:
     """
@@ -36,9 +34,9 @@ def initialize() -> MAVConnection:
             sys.exit(1)
 
     elif mode == '2':
-        address = SIMULATION_RADIO
+        address = Radio.GROUND_CONTROL_SIM
 
-    connection = MAVConnection(address, source_system=System.GROUND_CONTROL.value)
+    connection = MAVConnection(address, source_system=254)
 
     return connection
 
@@ -65,18 +63,34 @@ if __name__ == "__main__":
             
         if mission_selection == '1':
             print("Starting Mission 1")
-            connection.mav_connection.mav.named_value_int_send(
-                time_boot_ms = 0, 
-                name = INVGATOR, 
-                value = 1)
+            connection.mav_connection.mav.command_long_send(
+                target_system = 1,
+                target_component = 0,
+                command = mavlink.MAV_CMD_USER_1,
+                confirmation = 0,
+                param1 = 1,
+                param2 = 0,
+                param3 = 0,
+                param4 = 0,
+                param5 = 0,
+                param6 = 0,
+                param7 = 0)
             mission_selection = None
 
         elif mission_selection == '2':
             print("Starting Mission 2. Closing connection.")
-            connection.mav_connection.mav.named_value_int_send(
-                time_boot_ms = 0, 
-                name = INVGATOR, 
-                value = 2)
+            connection.mav_connection.mav.command_long_send(
+                target_system = Robot.INVESTIGATOR,
+                target_component = 0,
+                command = mavlink.MAV_CMD_USER_1,
+                confirmation = 0,
+                param1 = 2,
+                param2 = 0,
+                param3 = 0,
+                param4 = 0,
+                param5 = 0,
+                param6 = 0,
+                param7 = 0)
             break
 
     connection.close()
