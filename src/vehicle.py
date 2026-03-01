@@ -225,7 +225,7 @@ class VehicleManager:
         while not self.check_mode(target_mode=target_mode):
             self.mav.command_long_send(
                 target_system=1,
-                target_component=1,
+                target_component=0,
                 command=mavlink.MAV_CMD_DO_SET_MODE,
                 confirmation=0,
                 param1=mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 
