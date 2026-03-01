@@ -77,7 +77,7 @@ class MAVConnection:
 
         @self.publish('HEARTBEAT', 1)
         def publish_heartbeat():
-            self.mav_connection.mav.heartbeat_send(
+            self.mav.heartbeat_send(
                 type=mavlink.MAV_TYPE_ONBOARD_CONTROLLER,
                 autopilot=mavlink.MAV_AUTOPILOT_INVALID,
                 base_mode=0,
@@ -87,6 +87,13 @@ class MAVConnection:
 
         self.mav_connection.wait_heartbeat(blocking=True)
         print("Heartbeat from system (system %u component %u)" % (self.mav_connection.target_system, self.mav_connection.target_component))
+
+    @property
+    def mav(self) -> mavlink.MAVLink:
+        """
+        Cast self.mav_connection.mav as ardupilotmega MAVLink dialect to allow for type hinting and autocompletion.
+        """
+        return cast(mavlink.MAVLink, self.mav_connection.mav)
 
     def stop_threads(self):
         if self.send_thread.is_alive():
