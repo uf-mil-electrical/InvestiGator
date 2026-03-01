@@ -30,7 +30,7 @@ class VehicleManager:
         self.unpublish = self.mav_connection.unpublish
         self.subscribe = self.mav_connection.subscribe
 
-        self.mav = self.mav_connection.mav_connection.mav
+        self.mav = self.mav_connection.mav
 
         self.location = Location(self)
         self.status = Status(self)
