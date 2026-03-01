@@ -12,11 +12,6 @@ from vehicle_properties import Location, Status, MavFrameLocalNed, MavFrameGloba
 from camera import Camera, MarkerDetection
 from constants import Radio, Robot
 
-radio = "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTDCKG37-if00-port0"
-simulation = 'udp:127.0.0.1:14550'
-
-System = Enum('System', [('INVESTIGATOR', 37), ('ROVER', 44), ('NAVIGATOR', 47), ('SUBJUGATOR', 59), ('GROUND_CONTROL', 255)])
-
 
 class VehicleManager:
     """
