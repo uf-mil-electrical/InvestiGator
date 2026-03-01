@@ -35,15 +35,6 @@ class VehicleManager:
         self.location = Location(self)
         self.status = Status(self)
 
-        # @self.publish('HEARTBEAT', 1)
-        # def publish_heartbeat():
-        #     self.mav.heartbeat_send(
-        #         type=mavlink.MAV_TYPE_ONBOARD_CONTROLLER,
-        #         autopilot=mavlink.MAV_AUTOPILOT_INVALID,
-        #         base_mode=0,
-        #         custom_mode=0,
-        #         system_status=0
-        #     )
 
     def takeoff(self, alt_m, timeout_s=15, threshold_m=0.1):
         """
