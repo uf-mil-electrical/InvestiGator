@@ -1,5 +1,6 @@
 from queue import Queue, ShutDown
 from threading import Thread, Event
+from typing import cast
 
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
@@ -31,7 +32,7 @@ class MAVConnection:
     def __init__(self, address, baud=112500, source_system=225, source_component=0):
 
         print("MAVConnection waiting for heartbeat")
-        self.mav_connection = mavutil.mavlink_connection(address, baud, source_system, source_component)
+        self.mav_connection = cast(mavutil.mavfile, mavutil.mavlink_connection(address, baud, source_system, source_component))
 
         # self.mav_connection.param_fetch_all()
 
