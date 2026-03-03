@@ -1,9 +1,7 @@
-from mavconnection import MAVConnection
+from InvestiGator import MAVConnection
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 import platform
 import sys
-from constants import Robot, Radio
-from pymavlink import mavutil
 
 SIMULATION_RADIO = 'udpin:127.0.0.1:14552' 
 GROUND_CONTROL_RADIO_LINUX = "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTDCKG37-if00-port0"
@@ -34,7 +32,7 @@ def initialize() -> MAVConnection:
             sys.exit(1)
 
     elif mode == '2':
-        address = Radio.GROUND_CONTROL_SIM
+        address = "udpin:127.0.0.1:14551"
 
     connection = MAVConnection(address, source_system=254)
 
@@ -80,7 +78,7 @@ if __name__ == "__main__":
         elif mission_selection == '2':
             print("Starting Mission 2. Closing connection.")
             connection.mav_connection.mav.command_long_send(
-                target_system = Robot.INVESTIGATOR,
+                target_system = 1,
                 target_component = 0,
                 command = mavlink.MAV_CMD_USER_1,
                 confirmation = 0,

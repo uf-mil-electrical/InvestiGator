@@ -1,7 +1,6 @@
-from mavconnection import MAVConnection
-from vehicle import VehicleManager
+from InvestiGator import MAVConnection
+from InvestiGator import VehicleManager
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
-from constants import Radio, Robot
 from dataclasses import dataclass
 import time
 from pymavlink import mavutil
@@ -32,7 +31,7 @@ class MissionState:
 if __name__ == "__main__":
 
     # Make connection
-    connection = MAVConnection(Radio.DRONE_SIM, source_system=1, source_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER )
+    connection = MAVConnection("udpin:127.0.0.1:14552", source_system=1, source_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER )
     vehicle = VehicleManager(mav_connection=connection)
 
     # Instantiate mission state to detect when a mission message is received
