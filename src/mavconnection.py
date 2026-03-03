@@ -34,8 +34,6 @@ class MAVConnection:
         print("MAVConnection waiting for heartbeat")
         self.mav_connection = cast(mavutil.mavfile, mavutil.mavlink_connection(address, baud, source_system, source_component))
 
-        # self.mav_connection.param_fetch_all()
-
         self.send_queue = Queue()
         self.receive_queue = Queue()
         self.running = Event()
