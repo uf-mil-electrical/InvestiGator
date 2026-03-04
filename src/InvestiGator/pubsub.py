@@ -71,18 +71,17 @@ class PublicationManager:
     def __init__(self, send_queue: Queue):
         self.publishing = {}
         self.send_queue = send_queue
-        self.shortest_period = 1
         self.running = Event()
         self.running.set()
 
         def publication_thread():
-            while self.running.is_set() and self.shortest_period is not None:
+            while self.running.is_set():
                 for publisher in self.publishing.values():
                     if (publisher["last_published"] is None) or (monotonic() - publisher["last_published"]) >= (
                             1 / publisher["frequency"]):
                         publisher["function"]()
                         publisher["last_published"] = monotonic()
-                sleep(self.shortest_period)
+                sleep(0.01)
 
         self.publish_thread = Thread(target=publication_thread, name="Publication Thread", daemon=True)
         self.publish_thread.start()
@@ -93,9 +92,6 @@ class PublicationManager:
         """
         if frequency > 50:
             print("Frequency too large. Please choose a frequency less than or equal to 50Hz.")
-
-        elif self.shortest_period is None or 1 / frequency < self.shortest_period:
-            self.shortest_period = 1 / frequency
 
         def wrap(function):
             if message_name in self.publishing:
