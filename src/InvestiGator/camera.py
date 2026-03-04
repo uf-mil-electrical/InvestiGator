@@ -183,9 +183,9 @@ class Camera:
             
         return frame
 
-    def video_loop(self):
+    def depthai_loop(self):
         """
-        Process images from camera and output detection data to detection_queue.
+        Process images from DepthAI camera and output detection data to detection_queue.
         """
         import depthai as dai
 
@@ -215,6 +215,48 @@ class Camera:
 
             cv2.destroyAllWindows()
             return
+
+    def generic_camera_loop(self):
+        """
+        Process images from USB camera and output detection data to detection_queue.
+        """
+        cap = cv2.VideoCapture(1)
+
+        if self.mode in ("UAV Recovery", "Recording"):
+            detector = self.aruco_detector()
+
+        while self.running.is_set():
+            ret, frame = cap.read()
+
+            if not ret:
+                continue
+
+            if self.mode == "UAV Recovery":
+                frame = self.process_fiducial_frame(frame, detector)
+
+            if self.preview:
+                cv2.imshow("video", frame)
+
+                if cv2.waitKey(1) == ord("q"):
+                    self.running.clear()
+                    break
+
+        cap.release()
+        cv2.destroyAllWindows()
+        return
+
+    def video_loop(self):
+        """
+        Main loop for video processing. Tries to run DepthAI camera and falls back to first USB camera if DepthAI camera not connected.
+        """
+        import depthai as dai
+
+        if len(dai.Device.getAllAvailableDevices()) != 0:
+            self.depthai_loop()
+        else:
+            print("No DepthAI camera found. Using USB camera.")
+            self.generic_camera_loop()
+        
             
 if __name__ == "__main__":
     
