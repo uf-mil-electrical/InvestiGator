@@ -191,7 +191,8 @@ class Camera:
 
         with dai.Pipeline() as pipeline:
             cam = pipeline.create(dai.node.Camera).build(dai.CameraBoardSocket.CAM_A)
-            
+            detector = None
+
             if self.mode in ("UAV Recovery", "Recording"):
                 video_queue = cam.requestOutput(size=(1280,720), enableUndistortion=True, fps=30).createOutputQueue()
                 detector = self.aruco_detector()
@@ -206,9 +207,8 @@ class Camera:
                 assert isinstance(frame, dai.ImgFrame)
                 frame = frame.getCvFrame()
 
-                if self.mode == "UAV Recovery":
+                if self.mode == "UAV Recovery" and detector is not None:
                     frame = self.process_fiducial_frame(frame, detector)
-
 
                 if self.preview:
                     cv2.imshow("video", frame)
