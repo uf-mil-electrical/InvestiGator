@@ -40,6 +40,7 @@ class SubscriptionManager:
             if message_type not in self.message_subscribers:
                 self.message_subscribers[message_type] = []
             self.message_subscribers[message_type].append(function)
+            return function
 
         return wrap
 
