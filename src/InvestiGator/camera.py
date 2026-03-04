@@ -1,4 +1,5 @@
 from multiprocessing import Process, Queue, Event
+from multiprocessing.synchronize import Event as EventType
 from typing import List, Tuple, Optional
 from collections import namedtuple
 
@@ -59,7 +60,7 @@ class Camera:
         
         self.detection_queue: Queue[MarkerDetection] = detection_queue
         self.preview = preview
-        self.running = Event()
+        self.running: EventType = Event()
 
         self.mode = "Recording"
         self.video_process: Optional[Process] = None
@@ -107,11 +108,11 @@ class Camera:
             return
         
         self.running.set()
-        self.video_process = Process(target=self.video_loop, daemon=True)
+        self.video_process = Process(target=self.video_loop, daemon=True, args=(self.running,))
         self.video_process.start()
 
 
-    def stop(self, timeout: float | None = None):
+    def stop(self, timeout=2.0):
         """
         Stop the video_loop process if it is running and join the process with the calling process.
         """
@@ -123,6 +124,7 @@ class Camera:
 
         if self.video_process.is_alive():
             self.video_process.terminate()
+            self.video_process.join(timeout=1.0)
 
         self.video_process = None
         
@@ -186,7 +188,7 @@ class Camera:
             
         return frame
 
-    def depthai_loop(self):
+    def depthai_loop(self, running: EventType):
         """
         Process images from DepthAI camera and output detection data to detection_queue.
         """
@@ -205,7 +207,7 @@ class Camera:
                 video_queue = cam.requestOutput(size=(1280,720), enableUndistortion=True, fps=30).createOutputQueue()
 
             pipeline.start()
-            while self.running.is_set():    
+            while running.is_set():    
                 frame = video_queue.get()
                 assert isinstance(frame, dai.ImgFrame)
                 frame = frame.getCvFrame()
@@ -217,13 +219,13 @@ class Camera:
                     cv2.imshow("video", frame)
 
                     if cv2.waitKey(1) == ord("q"):
-                        self.running.clear()
+                        running.clear()
                         break
 
             cv2.destroyAllWindows()
             return
 
-    def generic_camera_loop(self):
+    def generic_camera_loop(self, running: EventType):
         """
         Process images from USB camera and output detection data to detection_queue.
         """
@@ -236,7 +238,7 @@ class Camera:
         if self.mode in ("UAV Recovery", "Recording"):
             detector = self.aruco_detector()
 
-        while self.running.is_set():
+        while running.is_set():
             ret, frame = cap.read()
 
             if not ret:
@@ -249,24 +251,24 @@ class Camera:
                 cv2.imshow("video", frame)
 
                 if cv2.waitKey(1) == ord("q"):
-                    self.running.clear()
+                    running.clear()
                     break
 
         cap.release()
         cv2.destroyAllWindows()
         return
 
-    def video_loop(self):
+    def video_loop(self, running: EventType):
         """
         Main loop for video processing. Tries to run DepthAI camera and falls back to first USB camera if DepthAI camera not connected.
         """
         import depthai as dai
 
         if len(dai.Device.getAllAvailableDevices()) != 0:
-            self.depthai_loop()
+            self.depthai_loop(running)
         else:
             print("No DepthAI camera found. Using USB camera.")
-            self.generic_camera_loop()
+            self.generic_camera_loop(running)
         
             
 if __name__ == "__main__":
@@ -278,9 +280,11 @@ if __name__ == "__main__":
     
     try:
         while (camera.running.is_set()):
-            time.sleep(1)
+            time.sleep(0.1)
+
     except KeyboardInterrupt:
         pass
+
     finally:
         camera.stop()
     
