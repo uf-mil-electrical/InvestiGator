@@ -39,7 +39,7 @@ class MAVConnection:
         self.running = Event()
         self.running.set()
 
-        self.mav_connection.mav.file = MAVWriter(self.send_queue)
+        self.mav_connection.mav.file = cast(mavlink.Any, MAVWriter(self.send_queue))
 
         self.pub_manager = PublicationManager(send_queue=self.send_queue)
         self.sub_manager = SubscriptionManager(receive_queue=self.receive_queue)
