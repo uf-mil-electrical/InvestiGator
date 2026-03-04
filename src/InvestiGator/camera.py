@@ -179,6 +179,9 @@ class Camera:
                 marker_center = tuple(marker_center[0][0].astype(int))
                 cv2.circle(frame, marker_center, 10, (0,255,0), 1)
 
+                frame_center = (frame.shape[1]//2, frame.shape[0]//2)
+                cv2.line(frame, marker_center, frame_center, (255,0,0), 1)
+
                 self.draw_center_box(frame)
             
         return frame
@@ -276,7 +279,6 @@ if __name__ == "__main__":
     try:
         while (camera.running.is_set()):
             time.sleep(1)
-
     except KeyboardInterrupt:
         pass
     finally:
