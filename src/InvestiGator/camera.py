@@ -222,6 +222,10 @@ class Camera:
         """
         cap = cv2.VideoCapture(1)
 
+        if not cap.isOpened():
+            print("Could not open USB camera.")
+            return
+
         if self.mode in ("UAV Recovery", "Recording"):
             detector = self.aruco_detector()
 
