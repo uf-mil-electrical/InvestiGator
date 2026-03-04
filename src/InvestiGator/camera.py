@@ -207,23 +207,25 @@ class Camera:
                 video_queue = cam.requestOutput(size=(1280,720), enableUndistortion=True, fps=30).createOutputQueue()
 
             pipeline.start()
-            while running.is_set():    
-                frame = video_queue.get()
-                assert isinstance(frame, dai.ImgFrame)
-                frame = frame.getCvFrame()
+            try:
+                while running.is_set():    
+                    frame = video_queue.get()
+                    assert isinstance(frame, dai.ImgFrame)
+                    frame = frame.getCvFrame()
 
-                if self.mode == "UAV Recovery" and detector is not None:
-                    frame = self.process_fiducial_frame(frame, detector)
+                    if self.mode == "UAV Recovery" and detector is not None:
+                        frame = self.process_fiducial_frame(frame, detector)
 
-                if self.preview:
-                    cv2.imshow("video", frame)
+                    if self.preview:
+                        cv2.imshow("video", frame)
 
-                    if cv2.waitKey(1) == ord("q"):
-                        running.clear()
-                        break
-
-            cv2.destroyAllWindows()
-            return
+                        if cv2.waitKey(1) == ord("q"):
+                            running.clear()
+                            break
+            except KeyboardInterrupt:
+                pass
+            finally:
+                cv2.destroyAllWindows()
 
     def generic_camera_loop(self, running: EventType):
         """
@@ -237,26 +239,30 @@ class Camera:
 
         if self.mode in ("UAV Recovery", "Recording"):
             detector = self.aruco_detector()
+            
+        try:
+            while running.is_set():
+                ret, frame = cap.read()
 
-        while running.is_set():
-            ret, frame = cap.read()
+                if not ret:
+                    continue
 
-            if not ret:
-                continue
+                if self.mode == "UAV Recovery":
+                    frame = self.process_fiducial_frame(frame, detector)
 
-            if self.mode == "UAV Recovery":
-                frame = self.process_fiducial_frame(frame, detector)
+                if self.preview:
+                    cv2.imshow("video", frame)
 
-            if self.preview:
-                cv2.imshow("video", frame)
+                    if cv2.waitKey(1) == ord("q"):
+                        running.clear()
+                        break
 
-                if cv2.waitKey(1) == ord("q"):
-                    running.clear()
-                    break
-
-        cap.release()
-        cv2.destroyAllWindows()
-        return
+        except KeyboardInterrupt:  
+            pass
+        
+        finally:              
+            cap.release()
+            cv2.destroyAllWindows()
 
     def video_loop(self, running: EventType):
         """
