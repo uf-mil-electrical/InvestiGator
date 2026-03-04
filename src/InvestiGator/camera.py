@@ -2,6 +2,7 @@ from multiprocessing import Process, Queue, Event
 from multiprocessing.synchronize import Event as EventType
 from typing import List, Tuple, Optional
 from collections import namedtuple
+import depthai as dai
 
 import numpy as np
 import cv2
@@ -192,8 +193,6 @@ class Camera:
         """
         Process images from DepthAI camera and output detection data to detection_queue.
         """
-        import depthai as dai
-
         with dai.Pipeline() as pipeline:
             cam = pipeline.create(dai.node.Camera).build(dai.CameraBoardSocket.CAM_A)
             detector = None
@@ -259,7 +258,7 @@ class Camera:
 
         except KeyboardInterrupt:  
             pass
-        
+
         finally:              
             cap.release()
             cv2.destroyAllWindows()
@@ -268,8 +267,6 @@ class Camera:
         """
         Main loop for video processing. Tries to run DepthAI camera and falls back to first USB camera if DepthAI camera not connected.
         """
-        import depthai as dai
-
         if len(dai.Device.getAllAvailableDevices()) != 0:
             self.depthai_loop(running)
         else:
