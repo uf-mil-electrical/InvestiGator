@@ -195,6 +195,10 @@ class Camera:
             if self.mode in ("UAV Recovery", "Recording"):
                 video_queue = cam.requestOutput(size=(1280,720), enableUndistortion=True, fps=30).createOutputQueue()
                 detector = self.aruco_detector()
+            
+            else:
+                print(f"Selected mode not supported: {self.mode}. Defaulting to recording mode.")
+                video_queue = cam.requestOutput(size=(1280,720), enableUndistortion=True, fps=30).createOutputQueue()
 
             pipeline.start()
             while self.running.is_set():    
