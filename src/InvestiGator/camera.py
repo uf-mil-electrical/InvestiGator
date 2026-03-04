@@ -157,7 +157,8 @@ class Camera:
         corners, ids = self.detect_filtered_markers(grey_frame, detector)
 
         if len(ids) == 0 or len(corners) == 0:
-            self.draw_center_box(frame)
+            if self.preview:
+                self.draw_center_box(frame)
             return frame
 
         for i, (marker_corners, marker_id) in enumerate(zip(corners, ids)):
@@ -231,6 +232,7 @@ class Camera:
         Process images from USB camera and output detection data to detection_queue.
         """
         cap = cv2.VideoCapture(1)
+        detector = None
 
         if not cap.isOpened():
             print("Could not open USB camera.")
@@ -246,7 +248,7 @@ class Camera:
                 if not ret:
                     continue
 
-                if self.mode == "UAV Recovery":
+                if self.mode == "UAV Recovery" and detector is not None:
                     frame = self.process_fiducial_frame(frame, detector)
 
                 if self.preview:
