@@ -30,7 +30,7 @@ class VehicleManager:
         self.publish_function = self.mav_connection.publish_function
         self.unpublish = self.mav_connection.unpublish
         self.subscribe = self.mav_connection.subscribe
-        self.unsubcribe = self.mav_connection.sub_manager.unsubscribe
+        self.unsubscribe = self.mav_connection.sub_manager.unsubscribe
 
         self.mav = self.mav_connection.mav
 
@@ -68,11 +68,11 @@ class VehicleManager:
                 param7=param7
             )
             if ack_event.wait(timeout=timeout_s):
-                self.unsubcribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
+                self.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
                 return ack_result == mavlink.MAV_RESULT_ACCEPTED
             
             # TODO: Log retry attempt
-        self.unsubcribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
+        self.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
 
     def takeoff(self, alt_m, timeout_s=15, threshold_m=0.1):
         """
@@ -130,14 +130,24 @@ class VehicleManager:
         """
         Wait for vehicle to be armed.
         """
-        #TODO: Implement timeout handling
-        start_s = time.time()
-        while not self.status.armed:
-            if time.time() - start_s > timeout_s:
-                # Exception
-                print("Was not able to arm.")
-            self.arm()
-            time.sleep(1)
+        armed_event = Event()
+
+        def on_armed(message: mavlink.MAVLink_heartbeat_message):
+            if message.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED:
+                armed_event.set()
+
+        self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(on_armed)
+
+        try:
+            start_s = time.monotonic()
+            while time.monotonic() - start_s < timeout_s:
+                if armed_event.wait(timeout=0.1):
+                    return True
+                # TODO: Add abort_event here
+        finally:
+            self.unsubscribe(mavlink.MAVLink_heartbeat_message.msgname, on_armed)
+
+        return False
 
     def arm(self, timeout_s=5.0):
         """
