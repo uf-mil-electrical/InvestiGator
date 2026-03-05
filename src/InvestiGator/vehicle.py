@@ -138,6 +138,19 @@ class VehicleManager:
             # TODO: Add abort event waiting here
 
         return False
+    
+    def wait_for_prearm(self, timeout_s=5.0):
+        """
+        Wait for vehicle to be prearmed.
+        """
+        start_s = time.monotonic()
+        while time.monotonic() - start_s < timeout_s:
+            if self.status.prearmed:
+                return True
+            time.sleep(0.1)
+            # TODO: Add abort event waiting here
+
+        return False
 
     def arm(self, timeout_s=5.0):
         """
