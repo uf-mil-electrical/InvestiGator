@@ -106,11 +106,13 @@ class Location(object):
 
 class Status(object):
     """
-    Information received from the vehicle's heartbeat.
+    Information received from the vehicle's heartbeat and system status messages.
     """
 
     def __init__(self, vehicle):
         self.lock = Lock()
+
+        # Heartbeat Attributes
         self.mode_dict = mavlink.enums["COPTER_MODE"]
         self.mode = None
         self.type = None
@@ -118,6 +120,21 @@ class Status(object):
         self.base_mode = None
         self.custom_mode = None
         self.system_status = None
+
+        # System Status Attributes
+        self.onboard_control_sensors_present = None
+        self.onboard_control_sensors_enabled = None
+        self.onboard_control_sensors_health = None
+        self.load = None
+        self.voltage_battery = None
+        self.current_battery = None
+        self.battery_remaining = None
+        self.drop_rate_comm = None
+        self.errors_comm = None
+        self.errors_count1 = None
+        self.errors_count2 = None
+        self.errors_count3 = None
+        self.errors_count4 = None
 
         @vehicle.subscribe("HEARTBEAT")
         def subscription_update(message: mavlink.MAVLink_heartbeat_message):
@@ -127,7 +144,24 @@ class Status(object):
                 self.base_mode = message.base_mode
                 self.custom_mode = message.custom_mode
                 self.system_status = message.system_status
-    
+
+        @vehicle.subscribe(mavlink.MAVLink_sys_status_message.msgname)
+        def on_sys_status(message: mavlink.MAVLink_sys_status_message):
+            with self.lock:
+                self.onboard_control_sensors_present = message.onboard_control_sensors_present
+                self.onboard_control_sensors_enabled = message.onboard_control_sensors_enabled
+                self.onboard_control_sensors_health = message.onboard_control_sensors_health
+                self.load = message.load
+                self.voltage_battery = message.voltage_battery
+                self.current_battery = message.current_battery
+                self.battery_remaining = message.battery_remaining
+                self.drop_rate_comm = message.drop_rate_comm
+                self.errors_comm = message.errors_comm
+                self.errors_count1 = message.errors_count1
+                self.errors_count2 = message.errors_count2
+                self.errors_count3 = message.errors_count3
+                self.errors_count4 = message.errors_count4
+                
     @property
     def armed(self):
         with self.lock:
