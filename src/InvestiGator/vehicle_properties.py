@@ -37,7 +37,7 @@ class Location(object):
         self.pitchspeed_rad_s = None
         self.yawspeed_rad_s = None
 
-        @vehicle.subscribe(mavlink.mavlink_map[mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT].msgname)
+        @vehicle.subscribe(mavlink.MAVLink_global_position_int_message.msgname)
         def update_global_position(message: mavlink.MAVLink_global_position_int_message):
             with self.lock:
                 self.lat_int = message.lat # Divide by 1E7 to convert to degrees
@@ -136,7 +136,7 @@ class Status(object):
         self.errors_count3 = None
         self.errors_count4 = None
 
-        @vehicle.subscribe("HEARTBEAT")
+        @vehicle.subscribe(mavlink.MAVLink_heartbeat_message.msgname)
         def subscription_update(message: mavlink.MAVLink_heartbeat_message):
             with self.lock:
                 self.type = message.type
