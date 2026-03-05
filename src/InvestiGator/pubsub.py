@@ -46,6 +46,16 @@ class SubscriptionManager:
 
         return wrap
 
+    def unsubscribe(self, message_type, function):
+        """
+        Remove a function from the mailing list for message_type.
+        """
+        with self.lock:
+            if message_type in self.message_subscribers and function in self.message_subscribers[message_type]:
+                self.message_subscribers[message_type].remove(function)
+            else:
+                print("Function not a subscriber to this message type.")
+
     def update_subscribers(self, message: mavlink.MAVLink_message):
         """
         Call functions that have a subscription to message_type.
