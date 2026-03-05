@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from queue import Queue, ShutDown
-from threading import Thread, Event
+from threading import Thread, Event, Lock
 from time import monotonic, sleep
 from typing import Callable
 
@@ -17,6 +17,7 @@ class SubscriptionManager:
         self.receive_queue = receive_queue
         self.running = Event()
         self.running.set()
+        self.lock = Lock()
 
         def reader():
             while self.running.is_set():
@@ -37,9 +38,10 @@ class SubscriptionManager:
         """
 
         def wrap(function):
-            if message_type not in self.message_subscribers:
-                self.message_subscribers[message_type] = []
-            self.message_subscribers[message_type].append(function)
+            with self.lock:
+                if message_type not in self.message_subscribers:
+                    self.message_subscribers[message_type] = []
+                self.message_subscribers[message_type].append(function)
             return function
 
         return wrap
@@ -48,7 +50,9 @@ class SubscriptionManager:
         """
         Call functions that have a subscription to message_type.
         """
-        for function in self.message_subscribers[message.get_type()]:
+        with self.lock:
+            subscribers = self.message_subscribers.get(message.get_type(), []).copy()
+        for function in subscribers:
             function(message)
 
     def close(self):
