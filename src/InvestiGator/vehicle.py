@@ -130,22 +130,12 @@ class VehicleManager:
         """
         Wait for vehicle to be armed.
         """
-        armed_event = Event()
-
-        def on_armed(message: mavlink.MAVLink_heartbeat_message):
-            if message.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED:
-                armed_event.set()
-
-        self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(on_armed)
-
-        try:
-            start_s = time.monotonic()
-            while time.monotonic() - start_s < timeout_s:
-                if armed_event.wait(timeout=0.1):
-                    return True
-                # TODO: Add abort_event here
-        finally:
-            self.unsubscribe(mavlink.MAVLink_heartbeat_message.msgname, on_armed)
+        start_s = time.monotonic()
+        while time.monotonic() - start_s < timeout_s:
+            if self.status.armed:
+                return True
+            time.sleep(0.1)
+            # TODO: Add abort event waiting here
 
         return False
 
