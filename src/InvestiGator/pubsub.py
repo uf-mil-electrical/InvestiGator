@@ -1,8 +1,6 @@
-from dataclasses import dataclass
 from queue import Queue, ShutDown
 from threading import Thread, Event, Lock
 from time import monotonic, sleep
-from typing import Callable
 
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
@@ -81,10 +79,13 @@ class PublicationManager:
         self.send_queue = send_queue
         self.running = Event()
         self.running.set()
+        self.lock = Lock()
 
         def publication_thread():
             while self.running.is_set():
-                for publisher in self.publishing.values():
+                with self.lock:
+                    publishers = self.publishing.copy()
+                for publisher in publishers.values():
                     if (publisher["last_published"] is None) or (monotonic() - publisher["last_published"]) >= (
                             1 / publisher["frequency"]):
                         publisher["function"]()
@@ -102,10 +103,11 @@ class PublicationManager:
             print("Frequency too large. Please choose a frequency less than or equal to 50Hz.")
 
         def wrap(function):
-            if message_name in self.publishing:
-                print("This function is already registered.")
-            elif frequency <= 50:
-                self.publishing[message_name] = {"function": function, "frequency": frequency, "last_published": None}
+            with self.lock:
+                if message_name in self.publishing:
+                    print("This function is already registered.")
+                elif frequency <= 50:
+                    self.publishing[message_name] = {"function": function, "frequency": frequency, "last_published": None}
             return function
 
         return wrap
@@ -118,19 +120,21 @@ class PublicationManager:
             print("Frequency too large. Please choose a frequency less than or equal to 50.")
             return
 
-        if message_name in self.publishing:
-            print("This function is already registered.")
-        else:
-            self.publishing[message_name] = {"function": function, "frequency": frequency, "last_published": None}
+        with self.lock:
+            if message_name in self.publishing:
+                print("This function is already registered.")
+            else:
+                self.publishing[message_name] = {"function": function, "frequency": frequency, "last_published": None}
 
     def remove_publisher(self, message_name):
         """
         Removes a function from publishing list.
         """
-        if message_name in self.publishing:
-            del self.publishing[message_name]
-        else:
-            print("Function not a publisher.")
+        with self.lock:
+            if message_name in self.publishing:
+                del self.publishing[message_name]
+            else:
+                print("Function not a publisher.")
 
     def close(self):
         self.running.clear()
