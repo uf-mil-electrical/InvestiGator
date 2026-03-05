@@ -3,6 +3,7 @@ import math
 from multiprocessing import Queue
 from queue import Empty
 from enum import Enum
+from threading import Event
 
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
@@ -29,12 +30,49 @@ class VehicleManager:
         self.publish_function = self.mav_connection.publish_function
         self.unpublish = self.mav_connection.unpublish
         self.subscribe = self.mav_connection.subscribe
+        self.unsubcribe = self.mav_connection.sub_manager.unsubscribe
 
         self.mav = self.mav_connection.mav
 
         self.location = Location(self)
         self.status = Status(self)
 
+    def send_command(self, command: int, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=0, retries:int = 3, timeout_s: float = 2.0):
+        """
+        Send a MAVLink COMMAND_LONG message. Wait for COMMAND_ACK to be received. Retry up to retries times if not received within timeout_s seconds. 
+        Return True if command acknowledged, False otherwise.
+        """
+        ack_event = Event()
+        ack_result = None
+
+        def on_ack(message: mavlink.MAVLink_command_ack_message):
+            if message.command == command:
+                nonlocal ack_result
+                ack_result = message.result
+                ack_event.set()
+
+        self.subscribe(mavlink.MAVLink_command_ack_message.msgname)(on_ack)
+
+        for attempt in range(retries):
+            self.mav.command_long_send(
+                target_system=target_system,
+                target_component=target_component,
+                command=command,
+                confirmation=0,
+                param1=param1,
+                param2=param2,
+                param3=param3,
+                param4=param4,
+                param5=param5,
+                param6=param6,
+                param7=param7
+            )
+            if ack_event.wait(timeout=timeout_s):
+                self.unsubcribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
+                return ack_result == mavlink.MAV_RESULT_ACCEPTED
+            
+            # TODO: Log retry attempt
+        self.unsubcribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
 
     def takeoff(self, alt_m, timeout_s=15, threshold_m=0.1):
         """
