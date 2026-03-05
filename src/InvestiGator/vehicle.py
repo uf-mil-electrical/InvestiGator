@@ -126,7 +126,7 @@ class VehicleManager:
             param7=0.0 
         )
 
-    def wait_for_armed(self, timeout_s=5.0):
+    def wait_for_armed(self, timeout_s):
         """
         Wait for vehicle to be armed.
         """
@@ -139,7 +139,7 @@ class VehicleManager:
 
         return False
     
-    def wait_for_prearm(self, timeout_s=5.0):
+    def wait_for_prearm(self, timeout_s):
         """
         Wait for vehicle to be prearmed.
         """
@@ -152,15 +152,21 @@ class VehicleManager:
 
         return False
 
-    def arm(self, timeout_s=5.0):
+    def arm(self, timeout_s=30.0):
         """
         Arm vehicle.
         """
+        start_s = time.monotonic()
+
+        if not self.wait_for_prearm(timeout_s=timeout_s):
+            #TODO: Log failed prearm
+            return False
+        
         if not self.send_command(command=mavlink.MAV_CMD_COMPONENT_ARM_DISARM, param1=1.0):
             #TODO: Log failed arm
             return False
         
-        if not self.wait_for_armed(timeout_s=timeout_s):
+        if not self.wait_for_armed(timeout_s= timeout_s - (time.monotonic() - start_s)):
             #TODO: Log failed arming
             return False
         
