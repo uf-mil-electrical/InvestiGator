@@ -126,36 +126,33 @@ class VehicleManager:
             param7=0.0 
         )
 
-    def wait_for_armed(self, timeout=5):
+    def wait_for_armed(self, timeout_s=5.0):
         """
         Wait for vehicle to be armed.
         """
         #TODO: Implement timeout handling
         start_s = time.time()
         while not self.status.armed:
-            if time.time() - start_s > timeout:
+            if time.time() - start_s > timeout_s:
                 # Exception
                 print("Was not able to arm.")
             self.arm()
             time.sleep(1)
 
-    def arm(self):
+    def arm(self, timeout_s=5.0):
         """
         Arm vehicle.
         """
-        self.mav.command_long_send(
-            target_system=1,
-            target_component=1,
-            command=mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
-            confirmation=0,
-            param1=1.0,
-            param2=0.0,
-            param3=0.0,
-            param4=0.0,
-            param5=0.0,
-            param6=0.0,
-            param7=0.0 
-        )
+        if not self.send_command(command=mavlink.MAV_CMD_COMPONENT_ARM_DISARM, param1=1.0):
+            #TODO: Log failed arm
+            return False
+        
+        if not self.wait_for_armed(timeout_s=timeout_s):
+            #TODO: Log failed arming
+            return False
+        
+        return True
+
 
     def move_body_frd_position(self, forward_m, right_m, down_m=0.0, maintain_heading=True, timeout_s=None):
         """
