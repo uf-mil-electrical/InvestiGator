@@ -135,14 +135,5 @@ class Status(object):
                 return False
             return bool(self.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
 
-    # @property
-    # def mode(self):
-    #     return self.mode_dict[self.custom_mode]
-
-    # @mode.setter
-    # def mode(self, mode: mavlink.enums["COPTER_MODE"]):
-    #     if mode not in mavlink.enums["COPTER_MODE"]:
-    #         print("Invalid mode")
-    #         return
 
 
