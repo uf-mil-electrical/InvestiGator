@@ -13,7 +13,7 @@ MavFrameLocalFRD = namedtuple("LocalFRD", ["x_forward_m", "y_right_m", "z_down_m
 MavFrameLocalFLU = namedtuple("LocalFLU", ["x_forward_m", "y_left_m", "z_up_m"])
 Attitude = namedtuple("Attitude", ["roll_rad", "pitch_rad", "yaw_rad", "rollspeed_rad_s", "pitchspeed_rad_s", "yawspeed_rad_s"])
 
-class Location(object):
+class Location:
     """
     Represents location of the vehicle and provides methods to return location wrapped in different location types.
     """
@@ -104,7 +104,7 @@ class Location(object):
             return Attitude(self.roll_rad, self.pitch_rad, self.yaw_rad, self.rollspeed_rad_s, self.pitchspeed_rad_s, self.yawspeed_rad_s)
 
 
-class Status(object):
+class Status:
     """
     Information received from the vehicle's heartbeat and system status messages.
     """
@@ -169,5 +169,11 @@ class Status(object):
                 return False
             return bool(self.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
 
+    @property
+    def prearmed(self):
+        with self.lock:
+            if self.onboard_control_sensors_health is None:
+                return False
+            return bool(self.onboard_control_sensors_health & mavlink.MAV_SYS_STATUS_PREARM_CHECK)
 
 
