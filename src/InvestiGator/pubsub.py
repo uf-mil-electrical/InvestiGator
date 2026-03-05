@@ -71,13 +71,6 @@ class SubscriptionManager:
         self.reader_thread.join()
 
 
-@dataclass
-class PublishingInfo:
-    function: Callable
-    period: float
-    last_published: float
-
-
 class PublicationManager:
     """
     Manages functions that publish at a given interval.
