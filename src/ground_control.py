@@ -1,36 +1,24 @@
 from InvestiGator import MAVConnection
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from config import load_config
+import argparse
 
 def initialize() -> MAVConnection:
     """
-    Prompt user for system connection mode. The connection is made to a simulated radio or hardware radio connected via USB. 
+    Get MAVLink connection. By default, connection is made to hardware RFD900x radio modem. Simulation can be selected with -s/--sim flag. 
     Strings for connection are stored in InvestiGator/config.toml.
     """
 
     config: dict = load_config()
 
-    print("--- Select Radio Mode ---")
-    print("1) Hardware Mode (USB)")
-    print("2) Simulation Mode (UDP)")
+    parser = argparse.ArgumentParser(description="Ground Control script for InvestiGator UAV. Default connection is to RFD900x radio modem. Use -s/--sim to connect to SITL. Connection strings are defined in config.toml.")
+    parser.add_argument("-s", "--sim", action="store_true", help="Use simulation connection string from config.toml")
+    args = parser.parse_args()
 
-    mode = input("Select mode [1-2]: ")
-
-    address = None
-
-    while True:
-        if mode == '1':
-            address = config["hardware"].get("ground_control")
-            break
-
-        elif mode == '2':
-            address = config["simulation"].get("ground_control")
-            break
-        
-        else:
-            print("Invalid mode selected. Please select 1 or 2.")
-            mode = input("Select mode [1-2]: ")
-
+    if args.sim:
+        address = config["simulation"].get("ground_control")
+    else:
+        address = config["hardware"].get("ground_control")
 
     print(f"Connecting with address: {address}")
     connection = MAVConnection(address, source_system=254)
@@ -104,5 +92,7 @@ if __name__ == "__main__":
         print(e)
     except FileNotFoundError as e:
         print(e)
+    except Exception as e:
+        print (e)
 
     
