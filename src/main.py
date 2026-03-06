@@ -9,7 +9,7 @@ def test(vehicle: VehicleManager):
     
     #vehicle.camera.switch_mode("UAV Recovery")
     vehicle.set_mode(target_mode = "GUIDED")
-    vehicle.wait_for_armed()
+    vehicle.arm()
     vehicle.takeoff(alt_m=10)
 
     vehicle.move_body_frd_position(forward_m=5, right_m=4, down_m=-10, timeout_s=20)
