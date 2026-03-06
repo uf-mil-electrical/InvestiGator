@@ -74,38 +74,42 @@ class VehicleManager:
             # TODO: Log retry attempt
         self.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
 
-    def takeoff(self, alt_m, timeout_s=15, threshold_m=0.1):
+    def takeoff(self, alt_m, timeout_s=30, threshold_m=0.5):
         """
         Wait for vehicle to arm and take off to alt_m meters.
         """
+        start_s = time.monotonic()
+
         if not self.status.armed:
-            # TODO: Log this as an error
-            self.wait_for_armed()
+            # TODO: Log waiting for arm
+            if not self.arm(timeout_s=timeout_s):
+                return False
 
-        self.mav.command_long_send(
-            target_system=1,
-            target_component=1,
-            command=mavlink.MAV_CMD_NAV_TAKEOFF,
-            confirmation=0,
-            param1=0.0,
-            param2=0.0,
-            param3=0.0,
-            param4=0.0,
-            param5=0.0,
-            param6=0.0,
-            param7=alt_m
-        )
+        if not self.send_command(command=mavlink.MAV_CMD_NAV_TAKEOFF, param7=alt_m):
+            # TODO: Log failed takeoff command ack
+            return False
+        
+        if not self.wait_for_altitude(alt_m, timeout_s= timeout_s - (time.monotonic() - start_s), threshold_m=threshold_m):
+            # TODO: Log failed altitude, altitude reached, and aborting to RTL
+            self.send_command(command=mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH)
+            return False
+        
+        return True
 
-        if timeout_s is not None:
-            start_s = time.time()
-            while True: 
-                print("Distance to takeoff altitude: ")
-                print(self.location.relative_alt_m - alt_m)
-                if time.time() - start_s > timeout_s:
-                    return False
-                if abs(self.location.relative_alt_m - alt_m) < threshold_m:
-                    return True
-                time.sleep(1)
+    def wait_for_altitude(self, alt_m, timeout_s, threshold_m=0.5):
+        """
+        Wait for vehicle to reach alt_m meters within threshold_m meters within timeout_s seconds.
+        Returns True if altitude reached, False otherwise.
+        """
+        start_s = time.monotonic()
+        while time.monotonic() - start_s < timeout_s:
+            current_alt_m = self.location.global_frame_relative.altitude_rel_m
+            if abs(current_alt_m - alt_m) <= threshold_m:
+                return True
+            # TODO: Add abort event waiting here
+            time.sleep(0.1)
+
+        return False
 
     def land(self):
         """
