@@ -1,5 +1,3 @@
-from re import I
-
 from InvestiGator import MAVConnection
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 import platform
