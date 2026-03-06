@@ -28,40 +28,56 @@ def test(vehicle: VehicleManager):
 class MissionState:
     mission_selection: int = 0
 
-if __name__ == "__main__":
+def main():
 
     # Make connection
     connection = MAVConnection("udpin:127.0.0.1:14552", source_system=1, source_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER )
     vehicle = VehicleManager(mav_connection=connection)
 
-    # Instantiate mission state to detect when a mission message is received
-    mission_state = MissionState()
+    try:
+        # Instantiate mission state to detect when a mission message is received
+        mission_state = MissionState()
 
-    @vehicle.subscribe(mavlink.MAVLink_command_long_message.msgname)
-    def handle_command_int(message):
-        if message.command == mavlink.MAV_CMD_USER_1:
-            print("Mission Selection Message Received.")
-            if message.param1 == 1:
-                mission_state.mission_selection = 1
-            elif message.param1 == 2:
-                mission_state.mission_selection = 2
+        @vehicle.subscribe(mavlink.MAVLink_command_long_message.msgname)
+        def handle_command_int(message):
+            if message.command == mavlink.MAV_CMD_USER_1:
+                print("Mission Selection Message Received.")
+                if message.param1 == 1:
+                    mission_state.mission_selection = 1
+                elif message.param1 == 2:
+                    mission_state.mission_selection = 2
 
-    while True:
-        if mission_state.mission_selection == 0:
-            print("Listening for mission selection.")
-            mission_state.mission_selection = -1
+        while True:
+            if mission_state.mission_selection == 0:
+                print("Listening for mission selection.")
+                mission_state.mission_selection = -1
 
-        if mission_state.mission_selection == 1:
-            print("Starting Mission 1")
-            test(vehicle)
-            mission_state.mission_selection = 0
-            print("Mission 1 done. Listening for new mission selection.")
+            if mission_state.mission_selection == 1:
+                print("Starting Mission 1")
+                test(vehicle)
+                mission_state.mission_selection = 0
+                print("Mission 1 done. Listening for new mission selection.")
 
-        elif mission_state.mission_selection == 2:
-            print("Starting Mission 2. Closing connection.")
-            vehicle.close()
-            connection.close()
-            mission_state.mission_selection = 0
-            break
-        
-        time.sleep(0.1)
+            elif mission_state.mission_selection == 2:
+                print("Starting Mission 2. Closing connection.")
+                vehicle.close()
+                connection.close()
+                mission_state.mission_selection = 0
+                break
+            
+            time.sleep(0.1)
+
+    finally:
+        print("Closing connections.")
+        vehicle.close()
+        connection.close()
+
+if __name__ == "__main__":
+
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nKeyboard interrupt received. Exiting.")
+    except TimeoutError as e:
+        print(e)
+    
