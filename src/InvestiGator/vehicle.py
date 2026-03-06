@@ -73,6 +73,7 @@ class VehicleManager:
             
             # TODO: Log retry attempt
         self.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
+        return False
 
     def takeoff(self, alt_m, timeout_s=30, threshold_m=0.5):
         """
