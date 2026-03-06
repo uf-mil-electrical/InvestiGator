@@ -139,6 +139,10 @@ class Status:
 
         @vehicle.subscribe(mavlink.MAVLink_heartbeat_message.msgname)
         def subscription_update(message: mavlink.MAVLink_heartbeat_message):
+            # TODO: Make this reflect the configurable source system from vehiclemanager
+            if message.get_srcSystem() != 1:
+                return
+            
             with self.lock:
                 self.type = message.type
                 self.autopilot = message.autopilot
@@ -148,6 +152,8 @@ class Status:
 
         @vehicle.subscribe(mavlink.MAVLink_sys_status_message.msgname)
         def on_sys_status(message: mavlink.MAVLink_sys_status_message):
+            if message.get_srcSystem() != 1:
+                return
             with self.lock:
                 self.onboard_control_sensors_present = message.onboard_control_sensors_present
                 self.onboard_control_sensors_enabled = message.onboard_control_sensors_enabled
