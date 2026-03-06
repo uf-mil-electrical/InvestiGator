@@ -1,39 +1,26 @@
 from InvestiGator import MAVConnection
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
-import platform
-import sys
-
-SIMULATION_RADIO = 'udpin:127.0.0.1:14552' 
-GROUND_CONTROL_RADIO_LINUX = "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTDCKG37-if00-port0"
-
+from config import load_config
+import argparse
 
 def initialize() -> MAVConnection:
     """
-    Prompt user for system connection mode. The connection is made to a simulated radio or hardware radio connected via USB. 
-    If on Windows, user is prompted for the relevant COM port.
+    Get MAVLink connection. By default, connection is made to hardware RFD900x radio modem. Simulation can be selected with -s/--sim flag. 
+    Strings for connection are stored in InvestiGator/config.toml.
     """
-    print("--- Select Radio Mode ---")
-    print("1) Hardware Mode (USB)")
-    print("2) Simulation Mode (UDP)")
 
-    mode = input("Select mode [1-2]: ")
+    config: dict = load_config()
 
-    address = None
+    parser = argparse.ArgumentParser(description="Ground Control script for InvestiGator UAV. Default connection is to RFD900x radio modem. Use -s/--sim to connect to SITL. Connection strings are defined in config.toml.")
+    parser.add_argument("-s", "--sim", action="store_true", help="Use simulation connection string from config.toml")
+    args = parser.parse_args()
 
-    if mode == '1':
-        if platform.system() == 'Linux':
-            address = GROUND_CONTROL_RADIO_LINUX
+    if args.sim:
+        address = config["simulation"].get("ground_control")
+    else:
+        address = config["hardware"].get("ground_control")
 
-        elif platform.system() == 'Windows':
-            address = input("Enter COM Port for Radio (COMx): ")
-        
-        else:
-            print("Platform not supported. Please use Windows or Linux.")
-            sys.exit(1)
-
-    elif mode == '2':
-        address = "udpin:127.0.0.1:14551"
-
+    print(f"Connecting with address: {address}")
     connection = MAVConnection(address, source_system=254)
 
     return connection
@@ -103,5 +90,9 @@ if __name__ == "__main__":
         print("\nKeyboard interrupt received. Exiting.")
     except TimeoutError as e:
         print(e)
+    except FileNotFoundError as e:
+        print(e)
+    except Exception as e:
+        print (e)
 
     

@@ -11,7 +11,6 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from .mavconnection import MAVConnection
 from .vehicle_properties import Location, Status, MavFrameLocalNed, MavFrameGlobal
 from .camera import Camera, MarkerDetection
-from .constants import Radio, Robot
 
 
 class VehicleManager:
