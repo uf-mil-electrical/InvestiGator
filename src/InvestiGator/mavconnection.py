@@ -1,6 +1,7 @@
 from queue import Queue, ShutDown
 from threading import Thread, Event
 from typing import cast
+import time
 
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
@@ -29,9 +30,8 @@ class MAVConnection:
     Reads from and writes to a MAVLink device.
     """
 
-    def __init__(self, address, baud=112500, source_system=225, source_component=0):
+    def __init__(self, address, baud=112500, source_system=225, source_component=0, timeout_s=30):
 
-        print("MAVConnection waiting for heartbeat")
         self.mav_connection = cast(mavutil.mavfile, mavutil.mavlink_connection(address, baud, source_system, source_component))
 
         self.send_queue = Queue()
@@ -83,8 +83,33 @@ class MAVConnection:
                 system_status=0
             )
 
-        self.mav_connection.wait_heartbeat(blocking=True)
-        print("Heartbeat from system (system %u component %u)" % (self.mav_connection.target_system, self.mav_connection.target_component))
+        print("MAVConnection waiting for first heartbeat")
+        self.wait_for_first_heartbeat(timeout_s=timeout_s)
+        
+    def wait_for_first_heartbeat(self, timeout_s):
+        
+        heartbeat_received = Event()
+
+        @self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)
+        def on_heartbeat(message: mavlink.MAVLink_heartbeat_message):
+            print("Heartbeat from system (system %u component %u)" % (self.mav_connection.target_system, self.mav_connection.target_component))
+            heartbeat_received.set()
+
+        try:
+            start_s = time.monotonic()
+            while time.monotonic() - start_s < timeout_s:
+                if heartbeat_received.is_set():
+                    break
+                heartbeat_received.wait(timeout=0.1)
+
+            if not heartbeat_received.is_set():
+                raise TimeoutError(f"Connection Failed: No heartbeat received from system within {timeout_s} seconds.")
+            
+            self.sub_manager.unsubscribe(mavlink.MAVLink_heartbeat_message.msgname, on_heartbeat)
+        
+        except (KeyboardInterrupt, TimeoutError):
+            self.close()
+            raise
 
     @property
     def mav(self) -> mavlink.MAVLink:
