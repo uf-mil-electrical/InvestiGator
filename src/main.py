@@ -4,6 +4,8 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from dataclasses import dataclass
 import time
 from pymavlink import mavutil
+import argparse
+from config import load_config
 
 def test(vehicle: VehicleManager):
     
@@ -28,10 +30,30 @@ def test(vehicle: VehicleManager):
 class MissionState:
     mission_selection: int = 0
 
+def initialize() -> MAVConnection:
+
+    config = load_config()
+
+    parser = argparse.ArgumentParser(description="Companion computer script for InvestiGator UAV. Default connection is to OrangeCube+ flight controller via USB. Use -s/--sim flag to connect to SITL. Connection strings are defined in config.toml.")
+    parser.add_argument("-s", "--sim", action="store_true", help="Use simulation connection string from config.toml")
+    args = parser.parse_args()
+
+    if args.sim:
+        address = config["simulation"].get("companion_computer")
+    else:
+        address = config["hardware"].get("flight_controller")
+
+    print(f"Connecting with address: {address}")
+    connection = MAVConnection(address, source_system=1, source_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER)
+
+    return connection
+
 def main():
 
     # Make connection
-    connection = MAVConnection("udpin:127.0.0.1:14552", source_system=1, source_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER )
+    connection = initialize()
+    print("Connection made!")
+
     vehicle = VehicleManager(mav_connection=connection)
 
     try:
@@ -79,5 +101,9 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nKeyboard interrupt received. Exiting.")
     except TimeoutError as e:
+        print(e)
+    except FileNotFoundError as e:
+        print(e)
+    except Exception as e:
         print(e)
     
