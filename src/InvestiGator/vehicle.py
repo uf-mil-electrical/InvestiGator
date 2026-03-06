@@ -3,6 +3,7 @@ import math
 from multiprocessing import Queue
 from queue import Empty
 from enum import Enum
+from threading import Event
 
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
@@ -20,7 +21,6 @@ class VehicleManager:
 
     def __init__(self, mav_connection: MAVConnection, baud=115200):
         self.mav_connection = mav_connection
-        self.mode_map = mavutil.mode_mapping_byname(mavlink.MAV_TYPE_QUADROTOR)
 
         self.detection_queue: Queue[MarkerDetection] = Queue()
         self.camera = Camera(self.detection_queue, preview=True)
@@ -29,95 +29,175 @@ class VehicleManager:
         self.publish_function = self.mav_connection.publish_function
         self.unpublish = self.mav_connection.unpublish
         self.subscribe = self.mav_connection.subscribe
+        self.unsubscribe = self.mav_connection.sub_manager.unsubscribe
 
         self.mav = self.mav_connection.mav
 
         self.location = Location(self)
         self.status = Status(self)
 
+    def send_command(self, command: int, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=0, retries:int = 3, retry_timeout_s: float=1.0):
+        """
+        Send a MAVLink COMMAND_LONG message. Wait for COMMAND_ACK to be received.
+        Retry up to retries times if not received within retry_timeout_s seconds. Maximum wait is retries * retry_timeout_s seconds.
+        Return True if command acknowledged, False otherwise.
+        """
+        ack_event = Event()
+        ack_result = None
 
-    def takeoff(self, alt_m, timeout_s=15, threshold_m=0.1):
+        def on_ack(message: mavlink.MAVLink_command_ack_message):
+            if message.command == command:
+                nonlocal ack_result
+                ack_result = message.result
+                ack_event.set()
+
+        self.subscribe(mavlink.MAVLink_command_ack_message.msgname)(on_ack)
+
+        for attempt in range(retries):
+            ack_event.clear()
+            ack_result = None
+
+            self.mav.command_long_send(
+                target_system=target_system,
+                target_component=target_component,
+                command=command,
+                confirmation=attempt,
+                param1=param1,
+                param2=param2,
+                param3=param3,
+                param4=param4,
+                param5=param5,
+                param6=param6,
+                param7=param7
+            )
+            
+            if ack_event.wait(timeout=retry_timeout_s):
+                self.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
+                return ack_result == mavlink.MAV_RESULT_ACCEPTED
+            # TODO: Refactor for abort event
+            # TODO: Log retry attempt
+        self.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
+        return False
+
+    def takeoff(self, alt_m, timeout_s=30, threshold_m=0.5):
         """
         Wait for vehicle to arm and take off to alt_m meters.
         """
+        start_s = time.monotonic()
+
         if not self.status.armed:
-            # TODO: Log this as an error
-            self.wait_for_armed()
+            # TODO: Log waiting for arm
+            if not self.arm(timeout_s=timeout_s):
+                return False
 
-        self.mav.command_long_send(
-            target_system=1,
-            target_component=1,
-            command=mavlink.MAV_CMD_NAV_TAKEOFF,
-            confirmation=0,
-            param1=0.0,
-            param2=0.0,
-            param3=0.0,
-            param4=0.0,
-            param5=0.0,
-            param6=0.0,
-            param7=alt_m
-        )
+        if not self.send_command(command=mavlink.MAV_CMD_NAV_TAKEOFF, param7=alt_m):
+            # TODO: Log failed takeoff command ack
+            return False
+        
+        if not self.wait_for_altitude(alt_m, timeout_s= timeout_s - (time.monotonic() - start_s), threshold_m=threshold_m):
+            # TODO: Log failed altitude, altitude reached, and aborting to RTL
+            self.send_command(command=mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH)
+            return False
+        
+        return True
 
-        if timeout_s is not None:
-            start_s = time.time()
-            while True: 
-                print("Distance to takeoff altitude: ")
-                print(self.location.relative_alt_m - alt_m)
-                if time.time() - start_s > timeout_s:
-                    return False
-                if abs(self.location.relative_alt_m - alt_m) < threshold_m:
-                    return True
-                time.sleep(1)
+    def wait_for_altitude(self, alt_m, timeout_s, threshold_m=0.5):
+        """
+        Wait for vehicle to reach alt_m meters within threshold_m meters within timeout_s seconds.
+        Returns True if altitude reached, False otherwise.
+        """
+        start_s = time.monotonic()
+        while time.monotonic() - start_s < timeout_s:
+            current_alt_m = self.location.global_frame_relative.altitude_rel_m
+            if current_alt_m is not None and abs(current_alt_m - alt_m) <= threshold_m:
+                return True
+            # TODO: Add abort event waiting here
+            time.sleep(0.1)
 
-    def land(self):
+        return False
+
+    def land(self, timeout_s=30.0):
         """
         Land the vehicle.
         """
-        print("Start Land Mode")
-        self.mav.command_long_send(
-            target_system=1,
-            target_component=0,
-            command=mavlink.MAV_CMD_NAV_LAND,
-            confirmation=0,
-            param1=0.0,
-            param2=0.0,
-            param3=0.0,
-            param4=0.0,
-            param5=0.0,
-            param6=0.0,
-            param7=0.0 
-        )
+        start_s = time.monotonic()
 
-    def wait_for_armed(self, timeout=5):
+        if not self.send_command(command=mavlink.MAV_CMD_NAV_LAND):
+            # TODO: Log
+            return False
+        
+        if not self.wait_for_disarmed(timeout_s = timeout_s - (time.monotonic() - start_s)):
+            altitude_rel = self.location.global_frame_relative.altitude_rel_m
+
+            if altitude_rel is not None and altitude_rel > 0.5:
+                # TODO: Log failed landing, abort to RTL
+                self.send_command(command=mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH)
+                return False
+            
+            return True
+
+        return True
+    
+    def wait_for_disarmed(self, timeout_s):
+        """
+        Wait for vehicle to disarm.
+        """
+        start_s = time.monotonic()
+        while time.monotonic() - start_s < timeout_s:
+            if not self.status.armed:
+                return True
+            # TODO: Add abort event waiting here
+            time.sleep(0.1)
+        
+        return False
+        
+
+    def wait_for_armed(self, timeout_s):
         """
         Wait for vehicle to be armed.
         """
-        #TODO: Implement timeout handling
-        start_s = time.time()
-        while not self.status.armed:
-            if time.time() - start_s > timeout:
-                # Exception
-                print("Was not able to arm.")
-            self.arm()
-            time.sleep(1)
+        start_s = time.monotonic()
+        while time.monotonic() - start_s < timeout_s:
+            if self.status.armed:
+                return True
+            time.sleep(0.1)
+            # TODO: Add abort event waiting here
 
-    def arm(self):
+        return False
+    
+    def wait_for_prearm(self, timeout_s):
+        """
+        Wait for vehicle to be prearmed.
+        """
+        start_s = time.monotonic()
+        while time.monotonic() - start_s < timeout_s:
+            if self.status.prearmed:
+                return True
+            time.sleep(0.1)
+            # TODO: Add abort event waiting here
+
+        return False
+
+    def arm(self, timeout_s=30.0):
         """
         Arm vehicle.
         """
-        self.mav.command_long_send(
-            target_system=1,
-            target_component=1,
-            command=mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
-            confirmation=0,
-            param1=1.0,
-            param2=0.0,
-            param3=0.0,
-            param4=0.0,
-            param5=0.0,
-            param6=0.0,
-            param7=0.0 
-        )
+        start_s = time.monotonic()
+
+        if not self.wait_for_prearm(timeout_s=timeout_s):
+            #TODO: Log failed prearm
+            return False
+        
+        if not self.send_command(command=mavlink.MAV_CMD_COMPONENT_ARM_DISARM, param1=1.0):
+            #TODO: Log failed arm
+            return False
+        
+        if not self.wait_for_armed(timeout_s= timeout_s - (time.monotonic() - start_s)):
+            #TODO: Log failed arming
+            return False
+        
+        return True
+
 
     def move_body_frd_position(self, forward_m, right_m, down_m=0.0, maintain_heading=True, timeout_s=None):
         """
@@ -211,40 +291,57 @@ class VehicleManager:
             yaw_rate=0
         )
 
-    def set_mode(self, target_mode: str, timeout_s=None):
+    def set_mode(self, target_mode: str | int, timeout_s=5.0):
         """
         Change mode of the flight controller. See: https://ardupilot.org/copter/docs/parameters.html#fltmode1
         Common modes: 'GUIDED', 'LAND', 'CIRCLE'
         """
-        # TODO: If timeout, return false
-        if self.mode_map is None:
+        if self.status.mode_map_byname is None or self.status.mode_map_bynumber is None:
+            # TODO: Log None maps
             return False
         
-        target_mode_int = self.mode_map[target_mode]
+        if isinstance(target_mode, str):
+            target_mode_int = self.status.mode_map_byname.get(target_mode)
+            if target_mode_int is None:
+                # TODO: Log unsupported mode
+                return False
+        else:
+            target_mode_int = target_mode
+            if target_mode_int not in self.status.mode_map_bynumber:
+                # TODO: Log unsupported mode
+                return False
 
-        while not self.check_mode(target_mode=target_mode):
-            self.mav.command_long_send(
-                target_system=1,
-                target_component=0,
-                command=mavlink.MAV_CMD_DO_SET_MODE,
-                confirmation=0,
-                param1=mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 
-                param2=target_mode_int,
-                param3=0.0,
-                param4=0.0,
-                param5=0.0,
-                param6=0.0,
-                param7=0.0 
-            )
-            time.sleep(1)
+        if not self.send_command(command=mavlink.MAV_CMD_DO_SET_MODE, param1=mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, param2=target_mode_int):
+            # TODO: Log failure
+            return False
+        
+        if not self.wait_for_mode(target_mode, timeout_s=timeout_s):
+            # TODO: Log failure
+            return False
+        
+        return True
 
-    def check_mode(self, target_mode: str) -> bool:
+    def wait_for_mode(self, target_mode: str | int, timeout_s):
+        """
+        Wait for current mode to be target_mode. Return True if target_mode is detected within timeout_s seconds, False otherwise.
+        """
+        start_s = time.monotonic()
+        while time.monotonic() - start_s < timeout_s:
+            if self.check_mode(target_mode):
+                return True
+            # TODO: Add abort event waiting here
+            time.sleep(0.1)
+
+        return False
+
+    def check_mode(self, target_mode: str | int) -> bool:
         """
         Return if current mode is equal to target_mode. 
         """
-        if self.status.custom_mode is not None and self.mode_map is not None:
-            return self.status.custom_mode == self.mode_map[target_mode]
-        return False
+        if isinstance(target_mode, int):
+            return self.status.custom_mode == target_mode
+        
+        return self.status.mode_string == target_mode
 
     def target_ned_reached(self, target_ned: MavFrameLocalNed, threshold_m=0.1) -> bool:
         """

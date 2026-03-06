@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from collections import namedtuple
 from threading import Lock
+from pymavlink import mavutil
 
 MavFrameGlobal = namedtuple("MavFrameGlobal", ["lattitude_int", "longitude_int", "altitude_m"])
 MavFrameLocalNed = namedtuple("LocalNED", ["x_north_m", "y_east_m", "z_down_m"])
@@ -13,7 +14,7 @@ MavFrameLocalFRD = namedtuple("LocalFRD", ["x_forward_m", "y_right_m", "z_down_m
 MavFrameLocalFLU = namedtuple("LocalFLU", ["x_forward_m", "y_left_m", "z_up_m"])
 Attitude = namedtuple("Attitude", ["roll_rad", "pitch_rad", "yaw_rad", "rollspeed_rad_s", "pitchspeed_rad_s", "yawspeed_rad_s"])
 
-class Location(object):
+class Location:
     """
     Represents location of the vehicle and provides methods to return location wrapped in different location types.
     """
@@ -37,7 +38,7 @@ class Location(object):
         self.pitchspeed_rad_s = None
         self.yawspeed_rad_s = None
 
-        @vehicle.subscribe(mavlink.mavlink_map[mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT].msgname)
+        @vehicle.subscribe(mavlink.MAVLink_global_position_int_message.msgname)
         def update_global_position(message: mavlink.MAVLink_global_position_int_message):
             with self.lock:
                 self.lat_int = message.lat # Divide by 1E7 to convert to degrees
@@ -104,22 +105,39 @@ class Location(object):
             return Attitude(self.roll_rad, self.pitch_rad, self.yaw_rad, self.rollspeed_rad_s, self.pitchspeed_rad_s, self.yawspeed_rad_s)
 
 
-class Status(object):
+class Status:
     """
-    Information received from the vehicle's heartbeat.
+    Information received from the vehicle's heartbeat and system status messages.
     """
 
     def __init__(self, vehicle):
         self.lock = Lock()
-        self.mode_dict = mavlink.enums["COPTER_MODE"]
-        self.mode = None
+
+        # Heartbeat Attributes
+        self.mode_map_bynumber = mavutil.mode_mapping_bynumber(mavlink.MAV_TYPE_QUADROTOR)
+        self.mode_map_byname = mavutil.mode_mapping_byname(mavlink.MAV_TYPE_QUADROTOR)
         self.type = None
         self.autopilot = None
         self.base_mode = None
         self.custom_mode = None
         self.system_status = None
 
-        @vehicle.subscribe("HEARTBEAT")
+        # System Status Attributes
+        self.onboard_control_sensors_present = None
+        self.onboard_control_sensors_enabled = None
+        self.onboard_control_sensors_health = None
+        self.load = None
+        self.voltage_battery = None
+        self.current_battery = None
+        self.battery_remaining = None
+        self.drop_rate_comm = None
+        self.errors_comm = None
+        self.errors_count1 = None
+        self.errors_count2 = None
+        self.errors_count3 = None
+        self.errors_count4 = None
+
+        @vehicle.subscribe(mavlink.MAVLink_heartbeat_message.msgname)
         def subscription_update(message: mavlink.MAVLink_heartbeat_message):
             with self.lock:
                 self.type = message.type
@@ -127,7 +145,24 @@ class Status(object):
                 self.base_mode = message.base_mode
                 self.custom_mode = message.custom_mode
                 self.system_status = message.system_status
-    
+
+        @vehicle.subscribe(mavlink.MAVLink_sys_status_message.msgname)
+        def on_sys_status(message: mavlink.MAVLink_sys_status_message):
+            with self.lock:
+                self.onboard_control_sensors_present = message.onboard_control_sensors_present
+                self.onboard_control_sensors_enabled = message.onboard_control_sensors_enabled
+                self.onboard_control_sensors_health = message.onboard_control_sensors_health
+                self.load = message.load
+                self.voltage_battery = message.voltage_battery
+                self.current_battery = message.current_battery
+                self.battery_remaining = message.battery_remaining
+                self.drop_rate_comm = message.drop_rate_comm
+                self.errors_comm = message.errors_comm
+                self.errors_count1 = message.errors_count1
+                self.errors_count2 = message.errors_count2
+                self.errors_count3 = message.errors_count3
+                self.errors_count4 = message.errors_count4
+                
     @property
     def armed(self):
         with self.lock:
@@ -135,14 +170,18 @@ class Status(object):
                 return False
             return bool(self.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
 
-    # @property
-    # def mode(self):
-    #     return self.mode_dict[self.custom_mode]
-
-    # @mode.setter
-    # def mode(self, mode: mavlink.enums["COPTER_MODE"]):
-    #     if mode not in mavlink.enums["COPTER_MODE"]:
-    #         print("Invalid mode")
-    #         return
+    @property
+    def prearmed(self):
+        with self.lock:
+            if self.onboard_control_sensors_health is None:
+                return False
+            return bool(self.onboard_control_sensors_health & mavlink.MAV_SYS_STATUS_PREARM_CHECK)
+        
+    @property
+    def mode_string(self):
+        with self.lock:
+            if self.custom_mode is None or self.mode_map_bynumber is None:
+                return None
+            return self.mode_map_bynumber.get(self.custom_mode)
 
 
