@@ -105,7 +105,7 @@ class VehicleManager:
         start_s = time.monotonic()
         while time.monotonic() - start_s < timeout_s:
             current_alt_m = self.location.global_frame_relative.altitude_rel_m
-            if abs(current_alt_m - alt_m) <= threshold_m:
+            if current_alt_m is not None and abs(current_alt_m - alt_m) <= threshold_m:
                 return True
             # TODO: Add abort event waiting here
             time.sleep(0.1)
