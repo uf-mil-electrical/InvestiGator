@@ -5,7 +5,7 @@ from typing import cast
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
-from pubsub import PublicationManager, SubscriptionManager
+from .pubsub import PublicationManager, SubscriptionManager
 
 
 class MAVWriter:
