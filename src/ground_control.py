@@ -1,17 +1,15 @@
 from InvestiGator import MAVConnection
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
-import platform
-import sys
-
-SIMULATION_RADIO = 'udpin:127.0.0.1:14552' 
-GROUND_CONTROL_RADIO_LINUX = "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTDCKG37-if00-port0"
-
+from config import load_config
 
 def initialize() -> MAVConnection:
     """
     Prompt user for system connection mode. The connection is made to a simulated radio or hardware radio connected via USB. 
-    If on Windows, user is prompted for the relevant COM port.
+    Strings for connection are stored in InvestiGator/config.toml.
     """
+
+    config: dict = load_config()
+
     print("--- Select Radio Mode ---")
     print("1) Hardware Mode (USB)")
     print("2) Simulation Mode (UDP)")
@@ -20,20 +18,21 @@ def initialize() -> MAVConnection:
 
     address = None
 
-    if mode == '1':
-        if platform.system() == 'Linux':
-            address = GROUND_CONTROL_RADIO_LINUX
+    while True:
+        if mode == '1':
+            address = config["hardware"].get("ground_control")
+            break
 
-        elif platform.system() == 'Windows':
-            address = input("Enter COM Port for Radio (COMx): ")
+        elif mode == '2':
+            address = config["simulation"].get("ground_control")
+            break
         
         else:
-            print("Platform not supported. Please use Windows or Linux.")
-            sys.exit(1)
+            print("Invalid mode selected. Please select 1 or 2.")
+            mode = input("Select mode [1-2]: ")
 
-    elif mode == '2':
-        address = "udpin:127.0.0.1:14551"
 
+    print(f"Connecting with address: {address}")
     connection = MAVConnection(address, source_system=254)
 
     return connection
@@ -102,6 +101,8 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nKeyboard interrupt received. Exiting.")
     except TimeoutError as e:
+        print(e)
+    except FileNotFoundError as e:
         print(e)
 
     
