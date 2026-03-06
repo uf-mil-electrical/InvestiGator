@@ -21,7 +21,6 @@ class VehicleManager:
 
     def __init__(self, mav_connection: MAVConnection, baud=115200):
         self.mav_connection = mav_connection
-        self.mode_map = mavutil.mode_mapping_byname(mavlink.MAV_TYPE_QUADROTOR)
 
         self.detection_queue: Queue[MarkerDetection] = Queue()
         self.camera = Camera(self.detection_queue, preview=True)
@@ -270,40 +269,57 @@ class VehicleManager:
             yaw_rate=0
         )
 
-    def set_mode(self, target_mode: str, timeout_s=None):
+    def set_mode(self, target_mode: str | int, timeout_s=5.0):
         """
         Change mode of the flight controller. See: https://ardupilot.org/copter/docs/parameters.html#fltmode1
         Common modes: 'GUIDED', 'LAND', 'CIRCLE'
         """
-        # TODO: If timeout, return false
-        if self.mode_map is None:
+        if self.status.mode_map_byname is None or self.status.mode_map_bynumber is None:
+            # TODO: Log None maps
             return False
         
-        target_mode_int = self.mode_map[target_mode]
+        if isinstance(target_mode, str):
+            target_mode_int = self.status.mode_map_byname.get(target_mode)
+            if target_mode_int is None:
+                # TODO: Log unsupported mode
+                return False
+        else:
+            target_mode_int = target_mode
+            if target_mode_int not in self.status.mode_map_bynumber:
+                # TODO: Log unsupported mode
+                return False
 
-        while not self.check_mode(target_mode=target_mode):
-            self.mav.command_long_send(
-                target_system=1,
-                target_component=0,
-                command=mavlink.MAV_CMD_DO_SET_MODE,
-                confirmation=0,
-                param1=mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 
-                param2=target_mode_int,
-                param3=0.0,
-                param4=0.0,
-                param5=0.0,
-                param6=0.0,
-                param7=0.0 
-            )
-            time.sleep(1)
+        if not self.send_command(command=mavlink.MAV_CMD_DO_SET_MODE, param1=mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, param2=target_mode_int):
+            # TODO: Log failure
+            return False
+        
+        if not self.wait_for_mode(target_mode, timeout_s=timeout_s):
+            # TODO: Log failure
+            return False
+        
+        return True
 
-    def check_mode(self, target_mode: str) -> bool:
+    def wait_for_mode(self, target_mode: str | int, timeout_s):
+        """
+        Wait for current mode to be target_mode. Return True if target_mode is detected within timeout_s seconds, False otherwise.
+        """
+        start_s = time.monotonic()
+        while time.monotonic() - start_s < timeout_s:
+            if self.check_mode(target_mode):
+                return True
+            # TODO: Add abort event waiting here
+            time.sleep(0.1)
+
+        return False
+
+    def check_mode(self, target_mode: str | int) -> bool:
         """
         Return if current mode is equal to target_mode. 
         """
-        if self.status.custom_mode is not None and self.mode_map is not None:
-            return self.status.custom_mode == self.mode_map[target_mode]
-        return False
+        if isinstance(target_mode, int):
+            return self.status.custom_mode == target_mode
+        
+        return self.status.mode_string == target_mode
 
     def target_ned_reached(self, target_ned: MavFrameLocalNed, threshold_m=0.1) -> bool:
         """

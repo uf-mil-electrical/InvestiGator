@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from collections import namedtuple
 from threading import Lock
+from pymavlink import mavutil
 
 MavFrameGlobal = namedtuple("MavFrameGlobal", ["lattitude_int", "longitude_int", "altitude_m"])
 MavFrameLocalNed = namedtuple("LocalNED", ["x_north_m", "y_east_m", "z_down_m"])
@@ -113,8 +114,8 @@ class Status:
         self.lock = Lock()
 
         # Heartbeat Attributes
-        self.mode_dict = mavlink.enums["COPTER_MODE"]
-        self.mode = None
+        self.mode_map_bynumber = mavutil.mode_mapping_bynumber(mavlink.MAV_TYPE_QUADROTOR)
+        self.mode_map_byname = mavutil.mode_mapping_byname(mavlink.MAV_TYPE_QUADROTOR)
         self.type = None
         self.autopilot = None
         self.base_mode = None
@@ -175,5 +176,12 @@ class Status:
             if self.onboard_control_sensors_health is None:
                 return False
             return bool(self.onboard_control_sensors_health & mavlink.MAV_SYS_STATUS_PREARM_CHECK)
+        
+    @property
+    def mode_string(self):
+        with self.lock:
+            if self.custom_mode is None or self.mode_map_bynumber is None:
+                return None
+            return self.mode_map_bynumber.get(self.custom_mode)
 
 
