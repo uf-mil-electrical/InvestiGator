@@ -53,11 +53,13 @@ class VehicleManager:
         self.subscribe(mavlink.MAVLink_command_ack_message.msgname)(on_ack)
 
         for attempt in range(retries):
+            ack_event.clear()
+
             self.mav.command_long_send(
                 target_system=target_system,
                 target_component=target_component,
                 command=command,
-                confirmation=0,
+                confirmation=attempt,
                 param1=param1,
                 param2=param2,
                 param3=param3,
@@ -69,7 +71,7 @@ class VehicleManager:
             if ack_event.wait(timeout=timeout_s):
                 self.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
                 return ack_result == mavlink.MAV_RESULT_ACCEPTED
-            
+            # TODO: Refactor for abort event
             # TODO: Log retry attempt
         self.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
         return False
@@ -123,7 +125,7 @@ class VehicleManager:
         
         if not self.wait_for_disarmed(timeout_s = timeout_s - (time.monotonic() - start_s)):
             altitude_rel = self.location.global_frame_relative.altitude_rel_m
-            
+
             if altitude_rel is not None and altitude_rel > 0.5:
                 # TODO: Log failed landing, abort to RTL
                 self.send_command(command=mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH)
