@@ -36,9 +36,10 @@ class VehicleManager:
         self.location = Location(self)
         self.status = Status(self)
 
-    def send_command(self, command: int, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=0, retries:int = 3, timeout_s: float = 2.0):
+    def send_command(self, command: int, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=0, retries:int = 3, retry_timeout_s: float=1.0):
         """
-        Send a MAVLink COMMAND_LONG message. Wait for COMMAND_ACK to be received. Retry up to retries times if not received within timeout_s seconds. 
+        Send a MAVLink COMMAND_LONG message. Wait for COMMAND_ACK to be received.
+        Retry up to retries times if not received within retry_timeout_s seconds. Maximum wait is retries * retry_timeout_s seconds.
         Return True if command acknowledged, False otherwise.
         """
         ack_event = Event()
@@ -54,6 +55,7 @@ class VehicleManager:
 
         for attempt in range(retries):
             ack_event.clear()
+            ack_result = None
 
             self.mav.command_long_send(
                 target_system=target_system,
@@ -68,7 +70,8 @@ class VehicleManager:
                 param6=param6,
                 param7=param7
             )
-            if ack_event.wait(timeout=timeout_s):
+            
+            if ack_event.wait(timeout=retry_timeout_s):
                 self.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
                 return ack_result == mavlink.MAV_RESULT_ACCEPTED
             # TODO: Refactor for abort event
