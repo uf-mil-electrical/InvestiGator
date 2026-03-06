@@ -1,3 +1,5 @@
+from re import I
+
 from InvestiGator import MAVConnection
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 import platform
@@ -21,10 +23,10 @@ def initialize() -> MAVConnection:
     address = None
 
     if mode == '1':
-        if platform.system == 'Linux':
+        if platform.system() == 'Linux':
             address = GROUND_CONTROL_RADIO_LINUX
 
-        elif platform.system == 'Windows':
+        elif platform.system() == 'Windows':
             address = input("Enter COM Port for Radio (COMx): ")
         
         else:
@@ -48,49 +50,60 @@ def mission_select() -> str:
 
     return input("Select mission [1-2]: ")
 
-if __name__ == "__main__":
+def main():
 
     connection = initialize()
     print("Connection made!")
 
-    mission_selection = mission_select()
+    try:
+        mission_selection = mission_select()
 
-    while True:
-        if mission_selection == None:
-            mission_selection = mission_select()
-            
-        if mission_selection == '1':
-            print("Starting Mission 1")
-            connection.mav_connection.mav.command_long_send(
-                target_system = 1,
-                target_component = 0,
-                command = mavlink.MAV_CMD_USER_1,
-                confirmation = 0,
-                param1 = 1,
-                param2 = 0,
-                param3 = 0,
-                param4 = 0,
-                param5 = 0,
-                param6 = 0,
-                param7 = 0)
-            mission_selection = None
+        while True:
+            if mission_selection == None:
+                mission_selection = mission_select()
 
-        elif mission_selection == '2':
-            print("Starting Mission 2. Closing connection.")
-            connection.mav_connection.mav.command_long_send(
-                target_system = 1,
-                target_component = 0,
-                command = mavlink.MAV_CMD_USER_1,
-                confirmation = 0,
-                param1 = 2,
-                param2 = 0,
-                param3 = 0,
-                param4 = 0,
-                param5 = 0,
-                param6 = 0,
-                param7 = 0)
-            break
+            if mission_selection == '1':
+                print("Starting Mission 1")
+                connection.mav_connection.mav.command_long_send(
+                    target_system = 1,
+                    target_component = 0,
+                    command = mavlink.MAV_CMD_USER_1,
+                    confirmation = 0,
+                    param1 = 1,
+                    param2 = 0,
+                    param3 = 0,
+                    param4 = 0,
+                    param5 = 0,
+                    param6 = 0,
+                    param7 = 0)
+                mission_selection = None
 
-    connection.close()
+            elif mission_selection == '2':
+                print("Starting Mission 2. Closing connection.")
+                connection.mav_connection.mav.command_long_send(
+                    target_system = 1,
+                    target_component = 0,
+                    command = mavlink.MAV_CMD_USER_1,
+                    confirmation = 0,
+                    param1 = 2,
+                    param2 = 0,
+                    param3 = 0,
+                    param4 = 0,
+                    param5 = 0,
+                    param6 = 0,
+                    param7 = 0)
+                break
+        
+    finally:
+        connection.close()    
+
+if __name__ == "__main__":
+
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nKeyboard interrupt received. Exiting.")
+    except TimeoutError as e:
+        print(e)
 
     
