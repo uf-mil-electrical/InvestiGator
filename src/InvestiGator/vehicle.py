@@ -111,24 +111,41 @@ class VehicleManager:
 
         return False
 
-    def land(self):
+    def land(self, timeout_s=30.0):
         """
         Land the vehicle.
         """
-        print("Start Land Mode")
-        self.mav.command_long_send(
-            target_system=1,
-            target_component=0,
-            command=mavlink.MAV_CMD_NAV_LAND,
-            confirmation=0,
-            param1=0.0,
-            param2=0.0,
-            param3=0.0,
-            param4=0.0,
-            param5=0.0,
-            param6=0.0,
-            param7=0.0 
-        )
+        start_s = time.monotonic()
+
+        if not self.send_command(command=mavlink.MAV_CMD_NAV_LAND):
+            # TODO: Log
+            return False
+        
+        if not self.wait_for_disarmed(timeout_s = timeout_s - (time.monotonic() - start_s)):
+            altitude_rel = self.location.global_frame_relative.altitude_rel_m
+            
+            if altitude_rel is not None and altitude_rel > 0.5:
+                # TODO: Log failed landing, abort to RTL
+                self.send_command(command=mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH)
+                return False
+            
+            return True
+
+        return True
+    
+    def wait_for_disarmed(self, timeout_s):
+        """
+        Wait for vehicle to disarm.
+        """
+        start_s = time.monotonic()
+        while time.monotonic() - start_s < timeout_s:
+            if not self.status.armed:
+                return True
+            # TODO: Add abort event waiting here
+            time.sleep(0.1)
+        
+        return False
+        
 
     def wait_for_armed(self, timeout_s):
         """
