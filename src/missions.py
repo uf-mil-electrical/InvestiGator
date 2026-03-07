@@ -182,5 +182,11 @@ def test(vehicle: VehicleManager):
     print("Landing")
     return vehicle.land()
 
+@mission("Arm")
+def arm(vehicle: VehicleManager):
+    if not vehicle.set_mode(target_mode = "GUIDED"):
+        return False
+    return vehicle.arm()
+
 # This must be called at the end of this file after MISSIONS list is populated by mission decorators.
 MISSION_MENU = build_mission_menu()
