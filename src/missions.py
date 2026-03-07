@@ -30,17 +30,17 @@ def mission(name: str):
 
 def accept_mission(mission_number: int, connection: MAVConnection):
     """
-    Call a mission by its number. Log acknowledgement of receipt and return success of mission.
+    Validate mission number and send mavlink.COMMAND_ACK with MAV_RESULT_IN_PROGRESS to indicate acceptance.
     """
-    if mission_number < 0 or mission_number >= len(MISSIONS):
-        print(f"Invalid mission number: {mission_number}")
+    if mission_number not in range(len(MISSIONS)):
+        print(f"Invalid mission number: {mission_number}\n")
         return False
     
     connection.mav.command_ack_send(
         command = MIL_MISSION_CMD,
         result = mavlink.MAV_RESULT_IN_PROGRESS)
     
-    print("Mission %d: %s accepted." % (mission_number, MISSIONS[mission_number].name))
+    print(f"Mission {mission_number}: {MISSIONS[mission_number].name} accepted.")
     return True
 
 
@@ -54,7 +54,7 @@ def send_mission_complete(connection: MAVConnection, mission_number: int):
         result_param2 = mission_number)
 
 
-def send_mission_message(connection: MAVConnection, mission_number: int):
+def send_mission_message_wait_ack(connection: MAVConnection, mission_number: int):
     """
     Send a mavlink.COMMAND_LONG message to the vehicle to request a mission.
     """
@@ -72,7 +72,7 @@ def send_mission_message(connection: MAVConnection, mission_number: int):
         ack_event.clear()
         ack_result = None
 
-        print("Sending mission command, attempt %d" % (attempt + 1))
+        print(f"Sending mission command, attempt {attempt + 1}")
 
         connection.mav.command_long_send(
             target_system = 1,
@@ -122,13 +122,26 @@ def wait_for_mission_complete(connection: MAVConnection, mission_number: int):
             ack_event.clear()
 
 
-@mission("Ping Companion Computer")
-def ping_companion(vehicle: VehicleManager):
+def build_mission_menu() -> str:
     """
-    Ping the companion computer. Ping successful if this function is called by companion computer. 
+    Return a string menu of available missions.
+    """
+    menu = "--- Select Mission ---\n"
+    for i, mission in enumerate(MISSIONS):
+        menu += f"{i}) {mission.name}\n"
+    return menu
+
+
+@mission("Ping Companion Computer")
+def answer_ping(vehicle: VehicleManager):
+    """
+    Answer ping from ground control. Ping successful if this function is called by companion computer. 
     """
     vehicle.mav_connection.mav.statustext_send(
         severity = mavlink.MAV_SEVERITY_NOTICE,
         text = "Pong".encode())
     
     return True
+
+# This must be called at the end of this file after MISSIONS list is populated by mission decorators.
+MISSION_MENU = build_mission_menu()
