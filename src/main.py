@@ -3,9 +3,10 @@ from InvestiGator import VehicleManager
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 import argparse
 from config import load_config
-from missions import MISSIONS, MIL_MISSION_CMD, accept_mission, send_mission_complete
+from missions import MISSIONS, MIL_MISSION_CMD, MISSION_MENU, accept_mission, send_mission_complete, valid_mission
 from threading import Event
 
+interactive = False
 
 def initialize() -> MAVConnection:
 
@@ -13,7 +14,12 @@ def initialize() -> MAVConnection:
 
     parser = argparse.ArgumentParser(description="Companion computer script for InvestiGator UAV. Default connection is to OrangeCube+ flight controller via USB. Use -s/--sim flag to connect to SITL. Connection strings are defined in config.toml.")
     parser.add_argument("-s", "--sim", action="store_true", help="Use simulation connection string from config.toml")
+    parser.add_argument("-i", "--interactive", action="store_true", help="Use interactive mode to select missions from command line.")
     args = parser.parse_args()
+
+    if args.interactive:
+        global interactive
+        interactive = True
 
     if args.sim:
         address = config["simulation"].get("companion_computer")
@@ -46,18 +52,31 @@ def main():
             command_event.set()            
 
     try:
-        while True:
-            if not command_event.wait(timeout=0.5):
-                continue
+        if not interactive:
+            while True:
+                if not command_event.wait(timeout=0.5):
+                    continue
 
-            if not accept_mission(connection=connection, mission_number=mission_number):
-                print(f"Mission {mission_number} rejected.")
+                if not accept_mission(connection=connection, mission_number=mission_number):
+                    print(f"Mission {mission_number} rejected.")
+                    command_event.clear()
+                    continue
+                
+                success = MISSIONS[mission_number].function(vehicle)
+                send_mission_complete(connection, mission_number, success=success)
                 command_event.clear()
-                continue
-            
-            success = MISSIONS[mission_number].function(vehicle)
-            send_mission_complete(connection, mission_number, success=success)
-            command_event.clear()
+        
+        else:
+            while True:
+                print(MISSION_MENU)
+                mission_number = input("Enter mission number: ")
+
+                if not valid_mission(mission_number):
+                    continue
+
+                mission_number = int(mission_number)
+                success = MISSIONS[mission_number].function(vehicle)
+                print(f"Mission {mission_number} {'succeeded' if success else 'failed'}.\n")
 
     finally:
         print("Closing connections.")
