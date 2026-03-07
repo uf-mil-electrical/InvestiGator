@@ -44,6 +44,22 @@ def accept_mission(mission_number: int, connection: MAVConnection):
     return True
 
 
+def valid_mission(mission_number: str) -> bool:
+    """
+    Check if mission number is valid.
+    """
+    if not mission_number.isdigit():
+        print(f"Invalid mission number: {mission_number}\n")
+        return False
+
+    mission_index = int(mission_number)
+    if mission_index < 0 or mission_index >= len(MISSIONS):
+        print(f"Invalid mission number: {mission_number}\n")
+        return False
+    
+    return True
+
+
 def send_mission_complete(connection: MAVConnection, mission_number: int, success: bool = True):
     """
     Send a mavlink.COMMAND_ACK message to the vehicle to indicate completion of a mission.
