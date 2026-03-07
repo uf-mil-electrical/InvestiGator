@@ -47,8 +47,10 @@ def initialize() -> MAVConnection:
     else:
         address = config["hardware"].get("flight_controller")
 
+    baud = config["hardware"].get("flight_controller_baud")
+
     print(f"Connecting with address: {address}")
-    connection = MAVConnection(address, source_system=1, source_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER)
+    connection = MAVConnection(address, source_system=1, source_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER, baud=baud)
 
     return connection
 
@@ -107,7 +109,5 @@ if __name__ == "__main__":
     except TimeoutError as e:
         print(e)
     except FileNotFoundError as e:
-        print(e)
-    except Exception as e:
         print(e)
     

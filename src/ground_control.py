@@ -19,9 +19,11 @@ def initialize() -> MAVConnection:
         address = config["simulation"].get("ground_control")
     else:
         address = config["hardware"].get("ground_control")
+    
+    baud = config["hardware"].get("ground_control_baud")
 
     print(f"Connecting with address: {address}")
-    connection = MAVConnection(address, source_system=254)
+    connection = MAVConnection(address, source_system=254, baud=baud)
 
     return connection
 
