@@ -9,22 +9,26 @@ from config import load_config
 
 def test(vehicle: VehicleManager):
     
-    #vehicle.camera.switch_mode("UAV Recovery")
+    vehicle.camera.switch_mode("UAV Recovery")
     vehicle.set_mode(target_mode = "GUIDED")
     vehicle.arm()
+    print("Taking off!")
     vehicle.takeoff(alt_m=10)
 
-    vehicle.move_body_frd_position(forward_m=5, right_m=4, down_m=-10, timeout_s=20)
+    print("Positioning for search.")
+    vehicle.move_body_frd_position(forward_m=5, right_m=0, down_m=0, timeout_s=20)
+    vehicle.move_body_frd_position(forward_m=0, right_m=4, down_m=0, timeout_s=20)
     print("Positioned for search.")
-    #detection_gps = vehicle.search_for_detection("UAV Recovery")
-    #print("Search Complete")
-    #if detection_gps is not None:
-        #vehicle.center_on_marker(timeout_s=100, target_distance_m=0.25)
 
-    vehicle.set_mode(target_mode = "LAND")
+    detection_gps = vehicle.search_for_detection("UAV Recovery")
+    print("Search Complete")
+
+    if detection_gps is not None:
+        vehicle.center_on_marker(timeout_s=100, target_distance_m=0.30)
+
+    print("Landing")
+    vehicle.land()
     print("DONE")
-
-    #vehicle.close()
 
 @dataclass
 class MissionState:
