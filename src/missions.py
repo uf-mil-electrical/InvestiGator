@@ -188,5 +188,18 @@ def arm(vehicle: VehicleManager):
         return False
     return vehicle.arm()
 
+@mission("Square_Test")
+def square_test(vehicle:VehicleManager):
+    ''' This mission will launch the drone go in a 2x2 m square (clockwise) then return to launch and land - by Ethan Mitchell'''
+    if not vehicle.set_mode(target_mode = "GUIDED"):
+        return False
+    vehicle.arm()
+    vehicle.takeoff(alt_m = 10)
+    vehicle.move_body_frd_position(forward_m=2,right_m=0, timeout_s=10)
+    vehicle.move_body_frd_position(forward_m=0,right_m=2, timeout_s=10)
+    vehicle.move_body_frd_position(forward_m=-2,right_m=0, timeout_s=10)
+    vehicle.move_body_frd_position(forward_m=0,right_m=-2, timeout_s=10)
+    return vehicle.land()
+
 # This must be called at the end of this file after MISSIONS list is populated by mission decorators.
 MISSION_MENU = build_mission_menu()
