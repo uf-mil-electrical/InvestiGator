@@ -10,4 +10,16 @@ def load_config():
     with open(config_path, "rb") as f:
         config = tomllib.load(f)
 
+    try:
+        config["hardware"]["flight_controller_baud"]
+        config["hardware"]["ground_control_baud"]
+        config["hardware"]["flight_controller"]
+        config["hardware"]["ground_control"]
+        config["simulation"]["companion_computer"]
+        config["simulation"]["ground_control"]
+
+    except KeyError as e:
+        raise KeyError(f"Missing required config value: {e}.\n"
+                       "Check that all values from config.example.toml are present in config.toml") from e
+
     return config

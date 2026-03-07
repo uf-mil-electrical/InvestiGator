@@ -110,4 +110,6 @@ if __name__ == "__main__":
         print(e)
     except FileNotFoundError as e:
         print(e)
+    except KeyError as e:
+        print(e)
     
