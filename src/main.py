@@ -1,16 +1,11 @@
 from InvestiGator import MAVConnection
 from InvestiGator import VehicleManager
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
-from dataclasses import dataclass
-import time
-from pymavlink import mavutil
 import argparse
 from config import load_config
+from missions import MISSIONS, MIL_MISSION_CMD, accept_mission, send_mission_complete
+from threading import Event
 
-
-@dataclass
-class MissionState:
-    mission_selection: int = 0
 
 def initialize() -> MAVConnection:
 
@@ -40,37 +35,29 @@ def main():
 
     vehicle = VehicleManager(mav_connection=connection)
 
+    command_event = Event()
+    mission_number = -1
+
+    @vehicle.subscribe(mavlink.MAVLink_command_long_message.msgname)
+    def handle_command_int(message):
+        if message.command == MIL_MISSION_CMD and not command_event.is_set():
+            nonlocal mission_number
+            mission_number = int(message.param1)
+            command_event.set()            
+
     try:
-        # Instantiate mission state to detect when a mission message is received
-        mission_state = MissionState()
-
-        @vehicle.subscribe(mavlink.MAVLink_command_long_message.msgname)
-        def handle_command_int(message):
-            if message.command == mavlink.MAV_CMD_USER_1:
-                print("Mission Selection Message Received.")
-                if message.param1 == 1:
-                    mission_state.mission_selection = 1
-                elif message.param1 == 2:
-                    mission_state.mission_selection = 2
-
         while True:
-            if mission_state.mission_selection == 0:
-                print("Listening for mission selection.")
-                mission_state.mission_selection = -1
+            if not command_event.wait(timeout=0.5):
+                continue
 
-            if mission_state.mission_selection == 1:
-                print("Starting Mission 1")
-                mission_state.mission_selection = 0
-                print("Mission 1 done. Listening for new mission selection.")
-
-            elif mission_state.mission_selection == 2:
-                print("Starting Mission 2. Closing connection.")
-                vehicle.close()
-                connection.close()
-                mission_state.mission_selection = 0
-                break
+            if not accept_mission(connection=connection, mission_number=mission_number):
+                print(f"Mission {mission_number} rejected.")
+                command_event.clear()
+                continue
             
-            time.sleep(0.1)
+            success = MISSIONS[mission_number].function(vehicle)
+            send_mission_complete(connection, mission_number, success=success)
+            command_event.clear()
 
     finally:
         print("Closing connections.")

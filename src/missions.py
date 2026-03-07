@@ -33,7 +33,7 @@ def accept_mission(mission_number: int, connection: MAVConnection):
     Validate mission number and send mavlink.COMMAND_ACK with MAV_RESULT_IN_PROGRESS to indicate acceptance.
     """
     if mission_number not in range(len(MISSIONS)):
-        print(f"Invalid mission number: {mission_number}\n")
+        print(f"Invalid mission number: {mission_number} is not in mission list\n")
         return False
     
     connection.mav.command_ack_send(
@@ -44,13 +44,13 @@ def accept_mission(mission_number: int, connection: MAVConnection):
     return True
 
 
-def send_mission_complete(connection: MAVConnection, mission_number: int):
+def send_mission_complete(connection: MAVConnection, mission_number: int, success: bool = True):
     """
     Send a mavlink.COMMAND_ACK message to the vehicle to indicate completion of a mission.
     """
     connection.mav.command_ack_send(
         command = MIL_MISSION_CMD,
-        result = mavlink.MAV_RESULT_ACCEPTED,
+        result = mavlink.MAV_RESULT_ACCEPTED if success else mavlink.MAV_RESULT_FAILED,
         result_param2 = mission_number)
 
 
