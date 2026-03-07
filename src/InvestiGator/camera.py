@@ -12,9 +12,9 @@ import time
 
 # Fiducial Properties
 FIDUCIAL_IDS = [0, 4]
-MARKER_SIZE_M = 0.187325
+MARKER_SIZE_M = 0.186
 
-# Camera Properties
+# DepthAI Camera Properties
 DIST_COEFF = np.array(
     [ 4.36490011e+00,  1.47384214e+00, -6.14358260e-06,  9.69038447e-05,
     3.05115115e-02,  4.72419739e+00,  2.81013250e+00,  2.22624362e-01,
@@ -30,19 +30,26 @@ CAM_MATRIX = np.array([
     [  0.        , 0.          , 1.          ]
 ], dtype=np.float32)
 
-# [x,y,z] coordinates of each corner
-MARKER_CORNERS_TOP_LEFT = np.array([
-    [0,             0,              0], # Top left
-    [MARKER_SIZE_M, 0,              0], # Top right
-    [MARKER_SIZE_M, MARKER_SIZE_M,  0], # Bottom right
-    [0,             MARKER_SIZE_M,  0]  # Bottom left
+# Generic Camera Properties
+DIST_COEFF_GEN = np.array(
+    [2.05104476e+01, 2.82916238e+00, 5.71330358e-04, 2.07891196e-03, 
+     -2.35404136e+00, 2.05169528e+01, 1.13939475e+00, -9.54340464e-02, 
+     0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 
+     0.00000000e+00, 0.00000000e+00],
+    dtype=np.float32)
+
+CAM_MATRIX_GEN = np.array([
+    [1412.41925199, 0.00000000, 685.21145798],
+    [0.00000000, 1409.77774826, 382.57045326],
+    [0.00000000, 0.00000000, 1.00000000],
 ], dtype=np.float32)
 
+# [x,y,z] coordinates of each corner
 MARKER_CORNERS_CENTER = np.array([
-    [-MARKER_SIZE_M / 2,  MARKER_SIZE_M / 2, 0],  # Top left
-    [ MARKER_SIZE_M / 2,  MARKER_SIZE_M / 2, 0],  # Top right
-    [ MARKER_SIZE_M / 2, -MARKER_SIZE_M / 2, 0],  # Bottom right
-    [-MARKER_SIZE_M / 2, -MARKER_SIZE_M / 2, 0]   # Bottom left
+    [-MARKER_SIZE_M / 2, -MARKER_SIZE_M / 2, 0],  # Top left
+    [ MARKER_SIZE_M / 2, -MARKER_SIZE_M / 2, 0],  # Top right
+    [ MARKER_SIZE_M / 2,  MARKER_SIZE_M / 2, 0],  # Bottom right
+    [-MARKER_SIZE_M / 2,  MARKER_SIZE_M / 2, 0]   # Bottom left
 ], dtype=np.float32)
 
 MarkerDetection = namedtuple("MarkerDetection",["X_Offset_m", "Y_Offset_m", "Z_Offset_m"])
@@ -149,7 +156,7 @@ class Camera:
         pt2 = width // 2 + 10, height // 2 + 10
         cv2.rectangle(frame, pt1, pt2, (0,0,255), 1, cv2.LINE_AA)
 
-    def process_fiducial_frame(self, frame: np.ndarray, detector: cv2.aruco.ArucoDetector) -> np.ndarray:
+    def process_fiducial_frame(self, frame: np.ndarray, detector: cv2.aruco.ArucoDetector, cam_matrix: np.ndarray, dist_coeffs: np.ndarray) -> np.ndarray:
         """
         Process input frame and search for fiducial markers. Draw markers to screen if preview is enabled.
         """
@@ -162,7 +169,7 @@ class Camera:
             return frame
 
         for i, (marker_corners, marker_id) in enumerate(zip(corners, ids)):
-            success, rvec, tvec = cv2.solvePnP(MARKER_CORNERS_CENTER, marker_corners.reshape(-1,2), CAM_MATRIX, DIST_COEFF_ZERO)
+            success, rvec, tvec = cv2.solvePnP(MARKER_CORNERS_CENTER, marker_corners.reshape(-1,2), cam_matrix, dist_coeffs)
 
             if not success:
                 continue
@@ -179,7 +186,7 @@ class Camera:
                 cv2.putText(frame, pixel_coordinates, (10,100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
 
                 marker_center = np.array([0,0,0], dtype=np.float32)
-                marker_center, _ = cv2.projectPoints(marker_center, rvec, tvec, CAM_MATRIX, DIST_COEFF_ZERO)
+                marker_center, _ = cv2.projectPoints(marker_center, rvec, tvec, cam_matrix, dist_coeffs)
                 marker_center = tuple(marker_center[0][0].astype(int))
                 cv2.circle(frame, marker_center, 10, (0,255,0), 1)
 
@@ -214,7 +221,7 @@ class Camera:
                     frame = frame.getCvFrame()
 
                     if self.mode == "UAV Recovery" and detector is not None:
-                        frame = self.process_fiducial_frame(frame, detector)
+                        frame = self.process_fiducial_frame(frame, detector, CAM_MATRIX, DIST_COEFF_ZERO)
 
                     if self.preview:
                         cv2.imshow("video", frame)
@@ -231,7 +238,11 @@ class Camera:
         """
         Process images from USB camera and output detection data to detection_queue.
         """
-        cap = cv2.VideoCapture(1)
+        cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap.set(cv2.CAP_PROP_FPS, 30)
+
         detector = None
 
         if not cap.isOpened():
@@ -240,7 +251,7 @@ class Camera:
 
         if self.mode in ("UAV Recovery", "Recording"):
             detector = self.aruco_detector()
-            
+
         try:
             while running.is_set():
                 ret, frame = cap.read()
@@ -249,9 +260,10 @@ class Camera:
                     continue
 
                 if self.mode == "UAV Recovery" and detector is not None:
-                    frame = self.process_fiducial_frame(frame, detector)
+                    frame = self.process_fiducial_frame(frame, detector, CAM_MATRIX_GEN, DIST_COEFF_GEN)
 
                 if self.preview:
+                    frame = cv2.resize(frame, (1024, 576))
                     cv2.imshow("video", frame)
 
                     if cv2.waitKey(1) == ord("q"):
@@ -272,7 +284,7 @@ class Camera:
         if len(dai.Device.getAllAvailableDevices()) != 0:
             self.depthai_loop(running)
         else:
-            print("No DepthAI camera found. Using USB camera.")
+            print("No DepthAI camera found. Using generic USB camera.")
             self.generic_camera_loop(running)
         
             
