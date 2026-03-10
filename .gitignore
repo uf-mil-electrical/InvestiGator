@@ -178,3 +178,4 @@ recordings/
 
 # Config file
 config.toml
+.vscode/launch.json
