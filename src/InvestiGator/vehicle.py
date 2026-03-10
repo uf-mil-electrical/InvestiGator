@@ -363,7 +363,7 @@ class VehicleManager:
         yaw_rad = self.location.attitude.yaw_rad
 
         x_north_m = forward_m * math.cos(yaw_rad) - right_m * math.sin(yaw_rad)
-        y_east_m = forward_m * math.sin(yaw_rad) + right_m * math.sin(yaw_rad)
+        y_east_m = forward_m * math.sin(yaw_rad) + right_m * math.cos(yaw_rad)
         z_down_m = down_m
 
         return MavFrameLocalNed(x_north_m, y_east_m, z_down_m)
