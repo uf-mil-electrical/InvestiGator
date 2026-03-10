@@ -35,6 +35,33 @@ class VehicleManager:
         self.location = Location(self)
         self.status = Status(self)
 
+        self.configure_messages()
+        self.wait_for_messages(timeout_s=30)
+
+
+    def configure_messages(self):
+        """
+        Send requests for messages from autopilot to ensure required data is being sent.
+        """
+        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, param2=10000)
+        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED, param2=10000)
+        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_SYS_STATUS, param2=10000)
+        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_ATTITUDE, param2=10000)
+    
+
+    def wait_for_messages(self, timeout_s = 30.0):
+        """
+        Wait to confirm that required messages are being received from autopilot before beginning missions.
+        """
+        start_s = time.monotonic()
+        while time.monotonic() - start_s < timeout_s:
+            if self.location.lat_int is not None and self.location.x_north_m is not None and self.status.onboard_control_sensors_health is not None and self.location.roll_rad is not None:
+                return True
+            time.sleep(0.1)
+        
+        return False
+
+
     def send_command(self, command: int, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=0, retries:int = 3, retry_timeout_s: float=1.0):
         """
         Send a MAVLink COMMAND_LONG message. Wait for COMMAND_ACK to be received.
