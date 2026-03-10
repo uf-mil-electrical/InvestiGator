@@ -219,7 +219,7 @@ class VehicleManager:
             time_boot_ms=0,
             target_system=1,
             target_component=0,
-            coordinate_frame=mavlink.MAV_FRAME_BODY_NED,
+            coordinate_frame=mavlink.MAV_FRAME_BODY_OFFSET_NED,
             type_mask=typemask,
             x = forward_m,
             y = right_m,
