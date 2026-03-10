@@ -92,7 +92,7 @@ def send_mission_message_wait_ack(connection: MAVConnection, mission_number: int
 
         connection.mav.command_long_send(
             target_system = 1,
-            target_component = 0,
+            target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
             command = MIL_MISSION_CMD,
             confirmation = attempt,
             param1 = mission_number,
