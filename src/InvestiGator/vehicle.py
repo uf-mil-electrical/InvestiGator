@@ -9,7 +9,7 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
 from .mavconnection import MAVConnection
-from .vehicle_properties import Location, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
+from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
 from .camera import Camera, MarkerDetection
 
 
@@ -277,18 +277,23 @@ class VehicleManager:
         return False
 
 
-    def move_global_gps(self, lat_int: int, lon_int: int, alt_m: int):
+    def move_global_gps_relative_alt(self, lat_int: int, lon_int: int, alt_m: int):
         """
-        Move to the given GPS WGS84 coordinates.
+        Move to the given GPS WGS84 coordinates. Altitude is relative to home position. Maintain current heading.
         """
-        #TODO: Test if heading is maintained or not during only lat/lon movement.
-        # If heading is not maintained, use current heading or default to point northward (OR! Home heading?)
+        
+        typemask = mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE & \
+        mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE & \
+        mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
+
+        target_global_rel_alt = MavFrameGlobalRel(lat_int, lon_int, alt_m)
+
         self.mav.set_position_target_global_int_send(
             time_boot_ms=0,
             target_system=1,
             target_component=0,
             coordinate_frame=mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
-            type_mask=0,
+            type_mask=typemask,
             lat_int=lat_int,
             lon_int=lon_int,
             alt=alt_m,
@@ -500,7 +505,7 @@ class VehicleManager:
         Perform a circle with given radius and center.
         """
 
-        self.move_global_gps(center_gps.lattitude_int, center_gps.longitude_int, center_gps.altitude_m)
+        self.move_global_gps_relative_alt(center_gps.lattitude_int, center_gps.longitude_int, center_gps.altitude_m)
         time.sleep(4)
 
         self.mav.param_set_send(
