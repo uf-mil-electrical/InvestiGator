@@ -9,7 +9,7 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
 from .mavconnection import MAVConnection
-from .vehicle_properties import Location, Status, MavFrameLocalNed, MavFrameGlobal
+from .vehicle_properties import Location, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
 from .camera import Camera, MarkerDetection
 
 
@@ -213,7 +213,10 @@ class VehicleManager:
         if not maintain_heading:
             typemask = XYZ_POS_YAW
 
-        target_ned = self.convert_frd_to_ned(forward_m, right_m, down_m)
+        target_ned = self.convert_frd_target_to_local_ned_target(forward_m, right_m, down_m)
+        if target_ned is None:
+            # TODO: Log
+            return False
 
         self.mav.set_position_target_local_ned_send(
             time_boot_ms=0,
@@ -356,17 +359,25 @@ class VehicleManager:
 
         return distance_m < threshold_m
     
-    def convert_frd_to_ned(self, forward_m, right_m, down_m):
+    def convert_frd_target_to_local_ned_target(self, forward_m, right_m, down_m):
         """
-        Convert FRD target frame to NED target frame.
+        Convert FRD target frame to Local NED target frame, with origin fixed relative to earth.
         """
         yaw_rad = self.location.attitude.yaw_rad
+        current_local_ned = self.location.local_ned
 
-        x_north_m = forward_m * math.cos(yaw_rad) - right_m * math.sin(yaw_rad)
-        y_east_m = forward_m * math.sin(yaw_rad) + right_m * math.cos(yaw_rad)
-        z_down_m = down_m
+        if yaw_rad is None or current_local_ned is None:
+            return None
 
-        return MavFrameLocalNed(x_north_m, y_east_m, z_down_m)
+        dx_north_m = forward_m * math.cos(yaw_rad) - right_m * math.sin(yaw_rad)
+        dy_east_m = forward_m * math.sin(yaw_rad) + right_m * math.cos(yaw_rad)
+        dz_down_m = down_m
+
+        target_x_north_m = current_local_ned.x_north_m + dx_north_m
+        target_y_east_m = current_local_ned.y_east_m + dy_east_m
+        target_z_down_m = current_local_ned.z_down_m + dz_down_m
+
+        return MavFrameLocalNed(target_x_north_m, target_y_east_m, target_z_down_m)
     
     def clear_detection_queue(self):
         """
