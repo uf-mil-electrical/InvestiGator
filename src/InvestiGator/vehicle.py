@@ -198,7 +198,7 @@ class VehicleManager:
         return True
 
 
-    def move_body_frd_position(self, forward_m, right_m, down_m=0.0, maintain_heading=True, timeout_s=None):
+    def move_body_frd_position(self, forward_m, right_m, down_m=0.0, maintain_heading=True, timeout_s=30.0):
         """
         Move relative to vehicle's FRD frame by Forward/Right. Optionally wait for target to be reached within timeout_s seconds.
         Will maintain current altitude by default.
@@ -237,36 +237,45 @@ class VehicleManager:
             yaw_rate = 0
         )
 
-        if timeout_s is not None:
-            start_s = time.time()
-            while True:
+        if not self.wait_for_ned_position(target_ned, timeout_s=timeout_s):
+            # Stop movement
+            self.mav.set_position_target_local_ned_send(
+                time_boot_ms=0,
+                target_system=1,
+                target_component=0,
+                coordinate_frame=mavlink.MAV_FRAME_BODY_OFFSET_NED,
+                type_mask=typemask,
+                x = 0,
+                y = 0,
+                z = 0,
+                vx = 0,
+                vy = 0,
+                vz = 0,
+                afx = 0,
+                afy = 0,
+                afz = 0,
+                yaw = 0,
+                yaw_rate = 0
+            )
 
-                if self.target_ned_reached(target_ned):
-                    break
+            return False
 
-                if time.time() - start_s > timeout_s:
-                    self.mav.set_position_target_local_ned_send(
-                        time_boot_ms=0,
-                        target_system=1,
-                        target_component=0,
-                        coordinate_frame=mavlink.MAV_FRAME_BODY_FRD,
-                        type_mask=0b110111111000,
-                        x = 0,
-                        y = 0,
-                        z = 0,
-                        vx = 0,
-                        vy = 0,
-                        vz = 0,
-                        afx = 0,
-                        afy = 0,
-                        afz = 0,
-                        yaw = 0,
-                        yaw_rate = 0
-                    )
-                    # TODO: Return error code or exception
-                    break
+        return True
 
+
+    def wait_for_ned_position(self, target_ned: MavFrameLocalNed, timeout_s=30.0, threshold_m=0.5):
+        """
+        Wait for vehicle to reach target NED position within threshold_m meters within timeout_s seconds.
+        Returns True if position reached, False otherwise.
+        """
+        start_s = time.monotonic()
+        while time.monotonic() - start_s < timeout_s:
+            if self.target_ned_reached(target_ned, threshold_m=threshold_m):
+                return True
             time.sleep(0.1)
+            # TODO: Add abort event
+        return False
+
 
     def move_global_gps(self, lat_int: int, lon_int: int, alt_m: int):
         """
