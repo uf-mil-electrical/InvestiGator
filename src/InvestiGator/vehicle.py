@@ -497,23 +497,3 @@ class VehicleManager:
         #self.mav_connection.close()
         # TODO: Check that threads in mavconnection are closed correctly
         self.camera.stop()
-
-# if __name__ == "__main__":
-    
-    # vehicle = VehicleManager("udp:127.0.0.1:14550", source_system=System.INVESTIGATOR)
-    # vehicle.camera.switch_mode("UAV Recovery")
-    # vehicle.set_mode(target_mode="GUIDED")
-    # vehicle.wait_for_armed()
-    # vehicle.takeoff(alt_m=10)
-
-    # vehicle.move_body_frd_position(forward_m=5, right_m=4, down_m=-10, timeout_s=20)
-    # print("Positioned for search.")
-    # detection_gps = vehicle.search_for_detection("UAV Recovery")
-    # print("Search Complete")
-    # if detection_gps is not None:
-    #     vehicle.center_on_marker(timeout_s=100, target_distance_m=0.25)
-
-    # vehicle.set_mode("LAND")
-    # print("DONE")
-
-    # vehicle.close()
