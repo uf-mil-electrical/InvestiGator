@@ -394,9 +394,9 @@ class VehicleManager:
         # 8. If second timeout: abort mission, raise exception, return to launch in caller.
         
         last_detection_ned_position = None
-        start_s = time.time()
+        start_s = time.monotonic()
 
-        while time.time() - start_s < timeout_s:
+        while time.monotonic() - start_s < timeout_s:
             try:
                 detection = self.detection_queue.get(timeout=0.5)
                 last_detection_ned_position = self.location.local_ned
@@ -428,7 +428,7 @@ class VehicleManager:
             print(forward_m, right_m, detection.Z_Offset_m)
             self.clear_detection_queue()
             time.sleep(0.1)
-            start_s = time.time()
+            start_s = time.monotonic()
         
     def detect_multiple_objects(self):
         """
@@ -448,9 +448,9 @@ class VehicleManager:
         print("Starting first Circle")
 
         self.circle(radius_m=0.1, center_gps=center_gps)
-        start_s = time.time()
+        start_s = time.monotonic()
         while self.detection_queue.empty():
-            if time.time() - start_s > 16:
+            if time.monotonic() - start_s > 16:
                 break
             time.sleep(0.5)
 
@@ -462,9 +462,9 @@ class VehicleManager:
         print("Starting second Circle")
 
         self.circle(radius_m=0.5, center_gps=center_gps)
-        start_s = time.time()
+        start_s = time.monotonic()
         while self.detection_queue.empty():
-            if time.time() - start_s > 16:
+            if time.monotonic() - start_s > 16:
                 break
             time.sleep(0.5)
 
