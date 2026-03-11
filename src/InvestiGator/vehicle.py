@@ -21,6 +21,8 @@ class VehicleManager:
     def __init__(self, mav_connection: MAVConnection, baud=115200):
         self.mav_connection = mav_connection
 
+        self.cancel_mission_event = Event()
+
         self.detection_queue: Queue[MarkerDetection] = Queue()
         self.camera = Camera(self.detection_queue, preview=True)
 
@@ -36,7 +38,7 @@ class VehicleManager:
         self.status = Status(self)
 
         self.configure_messages()
-        self.wait_for_messages(timeout_s=30)
+        self.wait_for_condition(self.properties_populated)
 
 
     def configure_messages(self):
@@ -47,6 +49,31 @@ class VehicleManager:
         self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED, param2=10000)
         self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_SYS_STATUS, param2=10000)
         self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_ATTITUDE, param2=10000)
+
+
+    def wait_for_condition(self, condition_function, timeout_s=30.0, interval_s=0.1):
+        """
+        Wait for condition function to be True within timeout_s seconds, checking every interval_s seconds.
+        If mission_cancel_event is set, returns False.
+        Return True if condition met, False if timeout reached.
+        """
+        start_s = time.monotonic()
+        while time.monotonic() - start_s < timeout_s:
+            if condition_function():
+                return True
+            if self.cancel_mission_event.wait(timeout=interval_s):
+                return False
+        
+        return False
+
+    
+    def properties_populated(self):
+        """
+        Return True if vehicle properties have been populated. False otherwise.
+        """
+        if self.location.lat_int is not None and self.location.x_north_m is not None and self.status.onboard_control_sensors_health is not None and self.location.roll_rad is not None:
+                return True
+        return False
     
 
     def wait_for_messages(self, timeout_s = 30.0):
