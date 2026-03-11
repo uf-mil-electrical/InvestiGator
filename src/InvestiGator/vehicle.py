@@ -146,27 +146,25 @@ class VehicleManager:
             # TODO: Log failed takeoff command ack
             return False
         
-        if not self.wait_for_altitude(alt_m, timeout_s= timeout_s - (time.monotonic() - start_s), threshold_m=threshold_m):
+        remaining_s = timeout_s - (time.monotonic() - start_s)
+        if not self.wait_for_condition(lambda: self.altitude_reached(alt_m), timeout_s=remaining_s):
             # TODO: Log failed altitude, altitude reached, and aborting to RTL
             self.send_command(command=mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH)
             return False
         
         return True
+    
 
-    def wait_for_altitude(self, alt_m, timeout_s, threshold_m=0.5):
+    def altitude_reached(self, alt_m, threshold_m=0.5):
         """
-        Wait for vehicle to reach alt_m meters within threshold_m meters within timeout_s seconds.
-        Returns True if altitude reached, False otherwise.
+        Return True if altitude alt_m is within threshold_m meters.
         """
-        start_s = time.monotonic()
-        while time.monotonic() - start_s < timeout_s:
-            current_alt_m = self.location.global_frame_relative.altitude_rel_m
-            if current_alt_m is not None and abs(current_alt_m - alt_m) <= threshold_m:
-                return True
-            # TODO: Add abort event waiting here
-            time.sleep(0.1)
-
+        altitude_rel = self.location.global_frame_relative.altitude_rel_m
+        print("Current relative altitude: ", altitude_rel)
+        if altitude_rel is not None and abs(altitude_rel - alt_m) <= threshold_m:
+            return True
         return False
+
 
     def land(self, timeout_s=30.0):
         """
