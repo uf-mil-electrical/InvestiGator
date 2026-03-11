@@ -237,6 +237,8 @@ class VehicleManager:
         Move relative to vehicle's FRD frame by Forward/Right. Optionally wait for target to be reached within timeout_s seconds.
         Will maintain current altitude by default.
         """
+        start_s = time.monotonic()
+
         XYZ_POS = mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE & \
         mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE & \
         mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
@@ -271,7 +273,8 @@ class VehicleManager:
             yaw_rate = 0
         )
 
-        if not self.wait_for_ned_position(target_ned, timeout_s=timeout_s):
+        remaining_s = timeout_s - (time.monotonic() - start_s)
+        if not self.wait_for_condition(lambda: self.target_ned_reached(target_ned), timeout_s=remaining_s):
             # Stop movement
             self.mav.set_position_target_local_ned_send(
                 time_boot_ms=0,
