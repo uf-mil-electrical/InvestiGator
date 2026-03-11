@@ -175,10 +175,9 @@ class VehicleManager:
             # TODO: Log
             return False
         
-        if not self.wait_for_disarmed(timeout_s = timeout_s - (time.monotonic() - start_s)):
-            altitude_rel = self.location.global_frame_relative.altitude_rel_m
-
-            if altitude_rel is not None and altitude_rel > 0.5:
+        remaining = timeout_s - (time.monotonic() - start_s)
+        if not self.wait_for_condition(lambda: self.status.armed, timeout_s=remaining):
+            if not self.altitude_reached(0, threshold_m=0.5):
                 # TODO: Log failed landing, abort to RTL
                 self.send_command(command=mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH)
                 return False
@@ -349,6 +348,8 @@ class VehicleManager:
         Change mode of the flight controller. See: https://ardupilot.org/copter/docs/parameters.html#fltmode1
         Common modes: 'GUIDED', 'LAND', 'CIRCLE'
         """
+        start_s = time.monotonic()
+        
         if self.status.mode_map_byname is None or self.status.mode_map_bynumber is None:
             # TODO: Log None maps
             return False
@@ -368,7 +369,8 @@ class VehicleManager:
             # TODO: Log failure
             return False
         
-        if not self.wait_for_mode(target_mode, timeout_s=timeout_s):
+        remaining_s = timeout_s - (time.monotonic() - start_s)
+        if not self.wait_for_condition(lambda: self.check_mode(target_mode), timeout_s=remaining_s):
             # TODO: Log failure
             return False
         
