@@ -219,7 +219,7 @@ class VehicleManager:
         """
         start_s = time.monotonic()
 
-        if not self.wait_for_prearm(timeout_s=timeout_s):
+        if not self.wait_for_condition(lambda: self.status.prearmed, timeout_s=timeout_s):
             #TODO: Log failed prearm
             return False
         
