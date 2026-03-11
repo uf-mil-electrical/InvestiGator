@@ -75,19 +75,6 @@ class VehicleManager:
         return False
     
 
-    def wait_for_messages(self, timeout_s = 30.0):
-        """
-        Wait to confirm that required messages are being received from autopilot before beginning missions.
-        """
-        start_s = time.monotonic()
-        while time.monotonic() - start_s < timeout_s:
-            if self.location.lat_int is not None and self.location.x_north_m is not None and self.status.onboard_control_sensors_health is not None and self.location.roll_rad is not None:
-                return True
-            time.sleep(0.1)
-        
-        return False
-
-
     def send_command(self, command: int, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=0, retries:int = 3, retry_timeout_s: float=1.0):
         """
         Send a MAVLink COMMAND_LONG message. Wait for COMMAND_ACK to be received.
@@ -184,33 +171,7 @@ class VehicleManager:
             
         return True
     
-    def wait_for_disarmed(self, timeout_s):
-        """
-        Wait for vehicle to disarm.
-        """
-        start_s = time.monotonic()
-        while time.monotonic() - start_s < timeout_s:
-            if not self.status.armed:
-                return True
-            # TODO: Add abort event waiting here
-            time.sleep(0.1)
-        
-        return False
-        
-    
-    def wait_for_prearm(self, timeout_s):
-        """
-        Wait for vehicle to be prearmed.
-        """
-        start_s = time.monotonic()
-        while time.monotonic() - start_s < timeout_s:
-            if self.status.prearmed:
-                return True
-            time.sleep(0.1)
-            # TODO: Add abort event waiting here
-
-        return False
-
+ 
     def arm(self, timeout_s=30.0):
         """
         Arm vehicle.
@@ -300,20 +261,6 @@ class VehicleManager:
         return True
 
 
-    def wait_for_ned_position(self, target_ned: MavFrameLocalNed, timeout_s=30.0, threshold_m=0.5):
-        """
-        Wait for vehicle to reach target NED position within threshold_m meters within timeout_s seconds.
-        Returns True if position reached, False otherwise.
-        """
-        start_s = time.monotonic()
-        while time.monotonic() - start_s < timeout_s:
-            if self.target_ned_reached(target_ned, threshold_m=threshold_m):
-                return True
-            time.sleep(0.1)
-            # TODO: Add abort event
-        return False
-
-
     def move_global_gps_relative_alt(self, lat_int: int, lon_int: int, alt_m: int):
         """
         Move to the given GPS WGS84 coordinates. Altitude is relative to home position. Maintain current heading.
@@ -377,18 +324,6 @@ class VehicleManager:
         
         return True
 
-    def wait_for_mode(self, target_mode: str | int, timeout_s):
-        """
-        Wait for current mode to be target_mode. Return True if target_mode is detected within timeout_s seconds, False otherwise.
-        """
-        start_s = time.monotonic()
-        while time.monotonic() - start_s < timeout_s:
-            if self.check_mode(target_mode):
-                return True
-            # TODO: Add abort event waiting here
-            time.sleep(0.1)
-
-        return False
 
     def check_mode(self, target_mode: str | int) -> bool:
         """
