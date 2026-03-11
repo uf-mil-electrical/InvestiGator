@@ -59,11 +59,10 @@ class VehicleManager:
         """
         start_s = time.monotonic()
         while time.monotonic() - start_s < timeout_s:
-            if condition_function():
-                return True
             if self.cancel_mission_event.wait(timeout=interval_s):
                 return False
-        
+            if condition_function():
+                return True
         return False
 
     
