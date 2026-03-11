@@ -160,7 +160,6 @@ class VehicleManager:
         Return True if altitude alt_m is within threshold_m meters.
         """
         altitude_rel = self.location.global_frame_relative.altitude_rel_m
-        print("Current relative altitude: ", altitude_rel)
         if altitude_rel is not None and abs(altitude_rel - alt_m) <= threshold_m:
             return True
         return False
@@ -201,19 +200,6 @@ class VehicleManager:
         
         return False
         
-
-    def wait_for_armed(self, timeout_s):
-        """
-        Wait for vehicle to be armed.
-        """
-        start_s = time.monotonic()
-        while time.monotonic() - start_s < timeout_s:
-            if self.status.armed:
-                return True
-            time.sleep(0.1)
-            # TODO: Add abort event waiting here
-
-        return False
     
     def wait_for_prearm(self, timeout_s):
         """
@@ -242,10 +228,10 @@ class VehicleManager:
             #TODO: Log failed arm
             return False
         
-        if not self.wait_for_armed(timeout_s= timeout_s - (time.monotonic() - start_s)):
+        remaining_s = timeout_s - (time.monotonic() - start_s)
+        if not self.wait_for_condition(lambda: self.status.armed, timeout_s=remaining_s):
             #TODO: Log failed arming
             return False
-        
         return True
 
 
