@@ -176,14 +176,12 @@ class VehicleManager:
             return False
         
         remaining = timeout_s - (time.monotonic() - start_s)
-        if not self.wait_for_condition(lambda: self.status.armed, timeout_s=remaining):
+        if not self.wait_for_condition(lambda: not self.status.armed, timeout_s=remaining):
             if not self.altitude_reached(0, threshold_m=0.5):
                 # TODO: Log failed landing, abort to RTL
                 self.send_command(command=mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH)
                 return False
             
-            return True
-
         return True
     
     def wait_for_disarmed(self, timeout_s):
