@@ -3,6 +3,7 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from config import load_config
 import argparse
 from missions import MISSIONS, MISSION_MENU, send_mission_message_wait_ack, wait_for_mission_complete, valid_mission
+from InvestiGator.constants import MIL_SYSTEM_CMD
 import time
 
 
@@ -39,11 +40,26 @@ def main():
     try:
         while True:
             print(MISSION_MENU)
-            mission_number = input("Enter mission number: ")
+            mission_number = input("Enter selection: ")
             
+            if mission_number == "p" or mission_number == "g":
+                connection.mav.command_long_send(
+                    target_system = 1,
+                    target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
+                    command = MIL_SYSTEM_CMD,
+                    confirmation = 0,
+                    param1 = 0 if mission_number == "p" else 1,
+                    param2 = 0,
+                    param3 = 0,
+                    param4 = 0,
+                    param5 = 0,
+                    param6 = 0,
+                    param7 = 0)
+                continue
+
             if not valid_mission(mission_number):
                 continue
-            
+
             mission_number = int(mission_number)
             start_s = time.monotonic()
 

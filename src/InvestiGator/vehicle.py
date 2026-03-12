@@ -3,7 +3,7 @@ import math
 from multiprocessing import Queue
 from queue import Empty
 from enum import Enum
-from threading import Event
+from threading import Event, Thread
 
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
@@ -11,7 +11,7 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from .mavconnection import MAVConnection
 from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
 from .camera import Camera, MarkerDetection
-from .constants import MIL_MISSION_CANCEL, MIL_MISSION_ABORT
+from .constants import MIL_MISSION_CANCEL, MIL_MISSION_ABORT, MIL_SYSTEM_CMD
 
 
 class VehicleManager:
@@ -51,6 +51,7 @@ class VehicleManager:
         self.subscribe(mavlink.MAVLink_command_long_message.msgname)(self.handle_abort_cancel)
         self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.clear_uncontrolled_event)
         self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.check_intended_mode)
+        self.subscribe(mavlink.MAVLink_command_long_message.msgname)(self.handle_system_command)
 
 
     def handle_abort_cancel(self, message: mavlink.MAVLink_command_long_message):
@@ -63,6 +64,23 @@ class VehicleManager:
         if message.command == MIL_MISSION_ABORT:
             self.uncontrolled_event.set()
             self.cancel_mission_event.set()
+
+    
+    def handle_system_command(self, message: mavlink.MAVLink_command_long_message):
+        """
+        Handle system commands from ground control through MIL_SYSTEM_CMD.
+        param1 = 0: Ping companion computer.
+        param1 = 1: Set mode to GUIDED.
+        """
+        if message.command == MIL_SYSTEM_CMD:
+            if message.param1 == 0:
+                # TODO: Send message back to ground control
+                print("Ping received from ground control.")
+            elif message.param1 == 1:
+                if self.uncontrolled_event.is_set():
+                    # Run command in a separate thread to not block subscription manager.
+                    print("Received system command: GUIDED. Setting mode to GUIDED.")
+                    Thread(target=self.set_mode, args=("GUIDED",), daemon=True).start()
 
 
     def clear_uncontrolled_event(self, message: mavlink.MAVLink_heartbeat_message):
