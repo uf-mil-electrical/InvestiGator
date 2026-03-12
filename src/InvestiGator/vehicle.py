@@ -396,6 +396,9 @@ class VehicleManager:
         """
         current_ned = self.location.local_ned
 
+        if current_ned is None:
+            return False
+
         dn = current_ned.x_north_m - target_ned.x_north_m
         de = current_ned.y_east_m - target_ned.y_east_m
         dd = current_ned.z_down_m - target_ned.z_down_m
