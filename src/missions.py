@@ -197,15 +197,49 @@ def arm(vehicle: VehicleManager):
 
 @mission("Square_Test")
 def square_test(vehicle:VehicleManager):
-    ''' This mission will launch the drone go in a 2x2 m square (clockwise) then return to launch and land - by Ethan Mitchell'''
+    """ 
+    This mission will launch the drone go in a 2x2 m square (clockwise) then return to launch and land - by Ethan Mitchell
+    """
     if not vehicle.set_mode(target_mode = "GUIDED"):
         return False
-    vehicle.arm()
-    vehicle.takeoff(alt_m = 10)
-    vehicle.move_body_frd_position(forward_m=2,right_m=0, timeout_s=10)
-    vehicle.move_body_frd_position(forward_m=0,right_m=2, timeout_s=10)
-    vehicle.move_body_frd_position(forward_m=-2,right_m=0, timeout_s=10)
-    vehicle.move_body_frd_position(forward_m=0,right_m=-2, timeout_s=10)
+    
+    print("Guided mode set")
+
+    if not vehicle.arm():
+        return False
+
+    print("Vehicle armed")
+    
+    if not vehicle.takeoff(alt_m = 10):
+        vehicle.land()
+        return False
+
+    print("Vehicle at altitude = 10m")
+
+    time.sleep(2)
+    
+    if not vehicle.move_body_frd_position(forward_m=2, right_m=0, timeout_s=10):
+        print("Failed to move forward, landing")
+        vehicle.land()
+        return False
+    
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=2, timeout_s=10):
+        print("Failed to move right, landing")
+        vehicle.land()
+        return False
+    
+    if not vehicle.move_body_frd_position(forward_m=-2, right_m=0, timeout_s=10):
+        print("Failed to move backward, landing")
+        vehicle.land()
+        return False
+    
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=-2, timeout_s=10):
+        print("Failed to move left, landing")
+        vehicle.land()
+        return False
+    
+    print("Movement success! Landing.")
+
     return vehicle.land()
 
 # This must be called at the end of this file after MISSIONS list is populated by mission decorators.
