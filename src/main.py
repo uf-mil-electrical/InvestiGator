@@ -59,7 +59,8 @@ def main():
                     continue
                 
                 if vehicle.uncontrolled_event.is_set():
-                    send_mission_complete(connection, mission_number, result = mavlink.MAV_RESULT_DENIED)
+                    print("Vehicle is in uncontrolled state. Rejecting mission. Change mode to GUIDED to clear.")
+                    send_mission_complete(connection, mission_number, success=False, result = mavlink.MAV_RESULT_DENIED)
                     command_event.clear()
                     continue
 

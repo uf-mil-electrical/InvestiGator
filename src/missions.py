@@ -60,7 +60,7 @@ def valid_mission(mission_number: str) -> bool:
     return True
 
 
-def send_mission_complete(connection: MAVConnection, mission_number: int, success: bool = True, result = None):
+def send_mission_complete(connection: MAVConnection, mission_number: int, success: bool, result = None):
     """
     Send a mavlink.COMMAND_ACK message to the vehicle to indicate completion of a mission.
     """
