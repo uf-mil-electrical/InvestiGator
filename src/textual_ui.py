@@ -10,30 +10,35 @@ class MissionControl(App):
     Practice Textual app to test UI.
     """
 
+    CSS = """
+    .with-border {
+        border: heavy green;
+    }
+    """
+
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
         yield Header()
 
-        with Horizontal(id="top"):
-            with Vertical(id="status"):
-                yield Label("--- Drone Status ---")
-                yield Label("Mode: --", id="mode")
-                yield Label("Armed: --", id="armed")
-                yield Label("Relative Altitude: --", id="altitude")
-                yield Label("GPS: --", id="gps")
-                yield Label("NED Position: --", id="ned")
-                yield Label("State: --", id="state")
+        with Horizontal():
+            with Vertical(id="left"):
+                with Vertical(id="status", classes="with-border"):
+                    yield Label("--- Drone Status ---")
+                    yield Label("Mode: --", id="mode")
+                    yield Label("Armed: --", id="armed")
+                    yield Label("Relative Altitude: --", id="altitude")
+                    yield Label("GPS: --", id="gps")
+                    yield Label("NED Position: --", id="ned")
+                    yield Label("State: --", id="state")
 
-            with Vertical(id="mission_log_display"):
+                with Vertical(id="mission_select", classes="with-border"):
+                    yield Label("--- Mission Select ---")
+                    yield Select(options=MISSIONS, id="mission_select")
+                    yield Button("Start Mission", id="start_mission", variant="success")
+
+            with Vertical(id="mission_log_display", classes="with-border"):
                 yield Label("--- Mission Log ---")
                 yield RichLog(id="mission_log")
-            
-        with Horizontal(id="bottom"):
-            with Vertical(id="mission_select"):
-                yield Label("--- Mission Select ---")
-                yield Select(options=MISSIONS, id="mission_select")
-                yield Button("Start Mission", id="start_mission", variant="success")
-                yield Button("Abort Mission", id="abort_mission", variant="error")
                 
         yield Footer()
 
