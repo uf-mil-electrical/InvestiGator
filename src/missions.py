@@ -1,12 +1,12 @@
 from InvestiGator import VehicleManager
 from InvestiGator import MAVConnection
+from InvestiGator.constants import MIL_MISSION_CMD
 from dataclasses import dataclass
 from typing import Callable
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from threading import Event
 import time
 
-MIL_MISSION_CMD = mavlink.MAV_CMD_USER_1
 
 @dataclass
 class Mission():
@@ -60,13 +60,16 @@ def valid_mission(mission_number: str) -> bool:
     return True
 
 
-def send_mission_complete(connection: MAVConnection, mission_number: int, success: bool = True):
+def send_mission_complete(connection: MAVConnection, mission_number: int, success: bool = True, result = None):
     """
     Send a mavlink.COMMAND_ACK message to the vehicle to indicate completion of a mission.
     """
+    if result is None:
+        result = mavlink.MAV_RESULT_ACCEPTED if success else mavlink.MAV_RESULT_FAILED
+    
     connection.mav.command_ack_send(
         command = MIL_MISSION_CMD,
-        result = mavlink.MAV_RESULT_ACCEPTED if success else mavlink.MAV_RESULT_FAILED,
+        result = result,
         result_param2 = mission_number)
 
 
