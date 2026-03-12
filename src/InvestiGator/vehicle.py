@@ -146,6 +146,7 @@ class VehicleManager:
         self.subscribe(mavlink.MAVLink_command_ack_message.msgname)(on_ack)
 
         for attempt in range(retries):
+            # TODO: Log retries
             ack_event.clear()
             ack_result = None
 
@@ -163,13 +164,15 @@ class VehicleManager:
                 param7=param7
             )
             
-            if ack_event.wait(timeout=retry_timeout_s):
+            if self.wait_for_condition(lambda: ack_event.is_set(), timeout_s=retry_timeout_s):
+                break
+            
+            elif self.cancel_mission_event.is_set():
                 self.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
-                return ack_result == mavlink.MAV_RESULT_ACCEPTED
-            # TODO: Refactor for abort event
-            # TODO: Log retry attempt
+                return False
+            
         self.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
-        return False
+        return ack_result == mavlink.MAV_RESULT_ACCEPTED
 
     def takeoff(self, alt_m, timeout_s=30, threshold_m=0.5):
         """
