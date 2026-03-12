@@ -67,6 +67,10 @@ def send_mission_complete(connection: MAVConnection, mission_number: int, succes
     if result is None:
         result = mavlink.MAV_RESULT_ACCEPTED if success else mavlink.MAV_RESULT_FAILED
     
+    if success:
+        print(f"Mission {mission_number}: {MISSIONS[mission_number].name} completed successfully.")
+        print("Waiting for new mission.")
+
     connection.mav.command_ack_send(
         command = MIL_MISSION_CMD,
         result = result,
