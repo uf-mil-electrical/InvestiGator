@@ -2,6 +2,10 @@ from InvestiGator import MAVConnection
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from config import load_config
 import argparse
+from missions import MISSIONS, MISSION_MENU, send_mission_message_wait_ack, wait_for_mission_complete, valid_mission
+from InvestiGator.constants import MIL_SYSTEM_CMD
+import time
+
 
 def initialize() -> MAVConnection:
     """
@@ -27,60 +31,63 @@ def initialize() -> MAVConnection:
 
     return connection
 
-def mission_select() -> str:
-    """
-    Prompt user for mission selection from list of known missions.
-    """
-    print("--- Select Mission ---")
-    print("1) Mission 1: UAV Recovery")
-    print("2) Mission 2: Close Drone Connection")
-
-    return input("Select mission [1-2]: ")
 
 def main():
 
     connection = initialize()
-    print("Connection made!")
+    print("Connection made!\n")
 
     try:
-        mission_selection = mission_select()
-
         while True:
-            if mission_selection == None:
-                mission_selection = mission_select()
-
-            if mission_selection == '1':
-                print("Starting Mission 1")
-                connection.mav_connection.mav.command_long_send(
+            print(MISSION_MENU)
+            mission_number = input("Enter selection: ")
+            
+            if mission_number == "p" or mission_number == "g":
+                connection.mav.command_long_send(
                     target_system = 1,
-                    target_component = 0,
-                    command = mavlink.MAV_CMD_USER_1,
+                    target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
+                    command = MIL_SYSTEM_CMD,
                     confirmation = 0,
-                    param1 = 1,
+                    param1 = 0 if mission_number == "p" else 1,
                     param2 = 0,
                     param3 = 0,
                     param4 = 0,
                     param5 = 0,
                     param6 = 0,
                     param7 = 0)
-                mission_selection = None
+                continue
 
-            elif mission_selection == '2':
-                print("Starting Mission 2. Closing connection.")
-                connection.mav_connection.mav.command_long_send(
+            if mission_number == "u" or mission_number == "c":
+                connection.mav.command_long_send(
                     target_system = 1,
-                    target_component = 0,
-                    command = mavlink.MAV_CMD_USER_1,
+                    target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
+                    command = MIL_SYSTEM_CMD,
                     confirmation = 0,
-                    param1 = 2,
+                    param1 = 2 if mission_number == "u" else 3,
                     param2 = 0,
                     param3 = 0,
                     param4 = 0,
                     param5 = 0,
                     param6 = 0,
                     param7 = 0)
-                break
-        
+                continue
+
+            if not valid_mission(mission_number):
+                continue
+
+            mission_number = int(mission_number)
+            start_s = time.monotonic()
+
+            if not send_mission_message_wait_ack(connection, mission_number):
+                print("Mission failed to be acknowledged.")
+                continue
+
+            if not wait_for_mission_complete(connection, mission_number):
+                print("Mission failed to complete.")
+                continue
+
+            print(f"Mission {mission_number}: {MISSIONS[mission_number].name} completed successfully in {time.monotonic()- start_s:.2f} seconds.\n")
+
     finally:
         connection.close()    
 

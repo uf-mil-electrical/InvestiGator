@@ -1,38 +1,13 @@
 from InvestiGator import MAVConnection
 from InvestiGator import VehicleManager
+from InvestiGator.constants import MIL_MISSION_ABORT, MIL_MISSION_CANCEL, MIL_MISSION_CMD
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
-from dataclasses import dataclass
-import time
-from pymavlink import mavutil
 import argparse
 from config import load_config
+from missions import MISSIONS, MISSION_MENU, accept_mission, send_mission_complete, valid_mission
+from threading import Event
 
-def test(vehicle: VehicleManager):
-    
-    vehicle.camera.switch_mode("UAV Recovery")
-    vehicle.set_mode(target_mode = "GUIDED")
-    vehicle.arm()
-    print("Taking off!")
-    vehicle.takeoff(alt_m=10)
-
-    print("Positioning for search.")
-    vehicle.move_body_frd_position(forward_m=5, right_m=0, down_m=0, timeout_s=20)
-    vehicle.move_body_frd_position(forward_m=0, right_m=4, down_m=0, timeout_s=20)
-    print("Positioned for search.")
-
-    detection_gps = vehicle.search_for_detection("UAV Recovery")
-    print("Search Complete")
-
-    if detection_gps is not None:
-        vehicle.center_on_marker(timeout_s=100, target_distance_m=0.30)
-
-    print("Landing")
-    vehicle.land()
-    print("DONE")
-
-@dataclass
-class MissionState:
-    mission_selection: int = 0
+interactive = False
 
 def initialize() -> MAVConnection:
 
@@ -40,7 +15,12 @@ def initialize() -> MAVConnection:
 
     parser = argparse.ArgumentParser(description="Companion computer script for InvestiGator UAV. Default connection is to OrangeCube+ flight controller via USB. Use -s/--sim flag to connect to SITL. Connection strings are defined in config.toml.")
     parser.add_argument("-s", "--sim", action="store_true", help="Use simulation connection string from config.toml")
+    parser.add_argument("-i", "--interactive", action="store_true", help="Use interactive mode to select missions from command line.")
     args = parser.parse_args()
+
+    if args.interactive:
+        global interactive
+        interactive = True
 
     if args.sim:
         address = config["simulation"].get("companion_computer")
@@ -62,38 +42,50 @@ def main():
 
     vehicle = VehicleManager(mav_connection=connection)
 
+    command_event = Event()
+    mission_number = -1
+
+    @vehicle.subscribe(mavlink.MAVLink_command_long_message.msgname)
+    def handle_command_int(message):
+        if message.command == MIL_MISSION_CMD and not command_event.is_set():
+            nonlocal mission_number
+            mission_number = int(message.param1)
+            command_event.set() 
+
     try:
-        # Instantiate mission state to detect when a mission message is received
-        mission_state = MissionState()
+        if not interactive:
+            while True:
+                if not command_event.wait(timeout=0.5):
+                    continue
+                
+                if vehicle.uncontrolled_event.is_set():
+                    print("Vehicle is in uncontrolled state. Rejecting mission. Change mode to GUIDED to clear.")
+                    send_mission_complete(connection, mission_number, success=False, result = mavlink.MAV_RESULT_DENIED)
+                    command_event.clear()
+                    continue
 
-        @vehicle.subscribe(mavlink.MAVLink_command_long_message.msgname)
-        def handle_command_int(message):
-            if message.command == mavlink.MAV_CMD_USER_1:
-                print("Mission Selection Message Received.")
-                if message.param1 == 1:
-                    mission_state.mission_selection = 1
-                elif message.param1 == 2:
-                    mission_state.mission_selection = 2
+                if not accept_mission(connection=connection, mission_number=mission_number):
+                    print(f"Mission {mission_number} rejected.")
+                    command_event.clear()
+                    continue
+                
+                success = MISSIONS[mission_number].function(vehicle)
+                send_mission_complete(connection, mission_number, success=success)
 
-        while True:
-            if mission_state.mission_selection == 0:
-                print("Listening for mission selection.")
-                mission_state.mission_selection = -1
+                vehicle.reset_state()
+                command_event.clear()
+        
+        else:
+            while True:
+                print(MISSION_MENU)
+                mission_number = input("Enter mission number: ")
 
-            if mission_state.mission_selection == 1:
-                print("Starting Mission 1")
-                test(vehicle)
-                mission_state.mission_selection = 0
-                print("Mission 1 done. Listening for new mission selection.")
+                if not valid_mission(mission_number):
+                    continue
 
-            elif mission_state.mission_selection == 2:
-                print("Starting Mission 2. Closing connection.")
-                vehicle.close()
-                connection.close()
-                mission_state.mission_selection = 0
-                break
-            
-            time.sleep(0.1)
+                mission_number = int(mission_number)
+                success = MISSIONS[mission_number].function(vehicle)
+                print(f"Mission {mission_number} {'succeeded' if success else 'failed'}.\n")
 
     finally:
         print("Closing connections.")

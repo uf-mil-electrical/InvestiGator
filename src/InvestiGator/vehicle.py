@@ -3,14 +3,15 @@ import math
 from multiprocessing import Queue
 from queue import Empty
 from enum import Enum
-from threading import Event
+from threading import Event, Thread
 
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
 from .mavconnection import MAVConnection
-from .vehicle_properties import Location, Status, MavFrameLocalNed, MavFrameGlobal
+from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
 from .camera import Camera, MarkerDetection
+from .constants import MIL_MISSION_CANCEL, MIL_MISSION_ABORT, MIL_SYSTEM_CMD
 
 
 class VehicleManager:
@@ -20,6 +21,10 @@ class VehicleManager:
 
     def __init__(self, mav_connection: MAVConnection, baud=115200):
         self.mav_connection = mav_connection
+
+        self.cancel_mission_event = Event()
+        self.uncontrolled_event = Event()
+        self.uncontrolled_event.set()
 
         self.detection_queue: Queue[MarkerDetection] = Queue()
         self.camera = Camera(self.detection_queue, preview=True)
@@ -34,6 +39,122 @@ class VehicleManager:
 
         self.location = Location(self)
         self.status = Status(self)
+
+        self.intended_rtl_land = False
+
+        self.MANUAL_MODES = {"LOITER", "STABILIZE", "ALT_HOLD"}
+        self.LANDING_MODES = {"LAND", "RTL"}
+
+        self.configure_messages()
+        self.wait_for_condition(self.properties_populated)
+
+        self.subscribe(mavlink.MAVLink_command_long_message.msgname)(self.handle_abort_cancel)
+        self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.clear_uncontrolled_event)
+        self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.check_intended_mode)
+        self.subscribe(mavlink.MAVLink_command_long_message.msgname)(self.handle_system_command)
+
+
+    def handle_abort_cancel(self, message: mavlink.MAVLink_command_long_message):
+        """
+        Set uncontrolled and cancel events when the relevant MIL_MISSION command is received.
+        Subscribed to MAVLink_command_long_message.
+        """
+        if message.command == MIL_MISSION_CANCEL:
+            self.cancel_mission_event.set()
+        if message.command == MIL_MISSION_ABORT:
+            self.uncontrolled_event.set()
+            self.cancel_mission_event.set()
+
+    
+    def handle_system_command(self, message: mavlink.MAVLink_command_long_message):
+        """
+        Handle system commands from ground control through MIL_SYSTEM_CMD.
+        param1 = 0: Ping companion computer.
+        param1 = 1: Set mode to GUIDED.
+        param1 = 2: Set uncontrolled
+        param1 = 3: Set cancel mission
+        """
+        if message.command == MIL_SYSTEM_CMD:
+            if message.param1 == 0:
+                # TODO: Send message back to ground control
+                print("Ping received from ground control.")
+            elif message.param1 == 1:
+                if self.uncontrolled_event.is_set():
+                    # Run command in a separate thread to not block subscription manager.
+                    print("Received system command: GUIDED. Setting mode to GUIDED.")
+                    Thread(target=self.set_mode, args=("GUIDED",), daemon=True).start()
+            elif message.param1 == 2:
+                print("Received system command: Set uncontrolled.")
+                self.cancel_mission_event.set()
+                self.uncontrolled_event.set()
+                Thread(target=self.set_mode, args=("RTL",), daemon=True).start()
+            elif message.param1 == 3:
+                print("Received system command: Cancel mission.")
+                self.cancel_mission_event.set()
+
+
+    def clear_uncontrolled_event(self, message: mavlink.MAVLink_heartbeat_message):
+        """
+        Clears uncontrolled event when mode is changed to GUIDED. Subscribed to heartbeat messages.
+        """
+        if message.get_srcSystem() != 1:
+            return
+        if self.check_mode("GUIDED") and self.uncontrolled_event.is_set():
+            print("Uncontrolled event cleared due to mode change to GUIDED.")
+            self.uncontrolled_event.clear()
+            self.cancel_mission_event.clear()
+            self.intended_rtl_land = False
+
+    
+    def check_intended_mode(self, message: mavlink.MAVLink_heartbeat_message):
+        """
+        Check if mode is changed by an external source. 
+        If so, trigger an abort and cede control of drone until mode is changed back to guided.
+        """
+        if message.get_srcSystem() != 1:
+            return
+        
+        manual_control = self.status.mode_string in self.MANUAL_MODES
+        unintended_landing = self.status.mode_string in self.LANDING_MODES and not self.intended_rtl_land
+
+        if manual_control or unintended_landing:
+            self.uncontrolled_event.set()
+            self.cancel_mission_event.set()
+    
+
+    def configure_messages(self):
+        """
+        Send requests for messages from autopilot to ensure required data is being sent.
+        """
+        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, param2=10000)
+        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED, param2=10000)
+        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_SYS_STATUS, param2=10000)
+        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_ATTITUDE, param2=10000)
+
+
+    def wait_for_condition(self, condition_function, timeout_s=30.0, interval_s=0.1):
+        """
+        Wait for condition function to be True within timeout_s seconds, checking every interval_s seconds.
+        If mission_cancel_event is set, returns False.
+        Return True if condition met, False if timeout reached.
+        """
+        start_s = time.monotonic()
+        while time.monotonic() - start_s < timeout_s:
+            if self.cancel_mission_event.wait(timeout=interval_s):
+                return False
+            if condition_function():
+                return True
+        return False
+
+    
+    def properties_populated(self):
+        """
+        Return True if vehicle properties have been populated. False otherwise.
+        """
+        if self.location.lat_int is not None and self.location.x_north_m is not None and self.status.onboard_control_sensors_health is not None and self.location.roll_rad is not None:
+                return True
+        return False
+    
 
     def send_command(self, command: int, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=0, retries:int = 3, retry_timeout_s: float=1.0):
         """
@@ -53,6 +174,7 @@ class VehicleManager:
         self.subscribe(mavlink.MAVLink_command_ack_message.msgname)(on_ack)
 
         for attempt in range(retries):
+            # TODO: Log retries
             ack_event.clear()
             ack_result = None
 
@@ -70,13 +192,15 @@ class VehicleManager:
                 param7=param7
             )
             
-            if ack_event.wait(timeout=retry_timeout_s):
+            if self.wait_for_condition(lambda: ack_event.is_set(), timeout_s=retry_timeout_s):
+                break
+            
+            elif self.cancel_mission_event.is_set():
                 self.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
-                return ack_result == mavlink.MAV_RESULT_ACCEPTED
-            # TODO: Refactor for abort event
-            # TODO: Log retry attempt
+                return False
+            
         self.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
-        return False
+        return ack_result == mavlink.MAV_RESULT_ACCEPTED
 
     def takeoff(self, alt_m, timeout_s=30, threshold_m=0.5):
         """
@@ -93,27 +217,23 @@ class VehicleManager:
             # TODO: Log failed takeoff command ack
             return False
         
-        if not self.wait_for_altitude(alt_m, timeout_s= timeout_s - (time.monotonic() - start_s), threshold_m=threshold_m):
+        remaining_s = timeout_s - (time.monotonic() - start_s)
+        if not self.wait_for_condition(lambda: self.altitude_reached(alt_m), timeout_s=remaining_s):
             # TODO: Log failed altitude, altitude reached, and aborting to RTL
-            self.send_command(command=mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH)
             return False
         
         return True
+    
 
-    def wait_for_altitude(self, alt_m, timeout_s, threshold_m=0.5):
+    def altitude_reached(self, alt_m, threshold_m=0.5):
         """
-        Wait for vehicle to reach alt_m meters within threshold_m meters within timeout_s seconds.
-        Returns True if altitude reached, False otherwise.
+        Return True if altitude alt_m is within threshold_m meters.
         """
-        start_s = time.monotonic()
-        while time.monotonic() - start_s < timeout_s:
-            current_alt_m = self.location.global_frame_relative.altitude_rel_m
-            if current_alt_m is not None and abs(current_alt_m - alt_m) <= threshold_m:
-                return True
-            # TODO: Add abort event waiting here
-            time.sleep(0.1)
-
+        altitude_rel = self.location.global_frame_relative.altitude_rel_m
+        if altitude_rel is not None and abs(altitude_rel - alt_m) <= threshold_m:
+            return True
         return False
+
 
     def land(self, timeout_s=30.0):
         """
@@ -121,69 +241,28 @@ class VehicleManager:
         """
         start_s = time.monotonic()
 
+        self.intended_rtl_land = True
+
         if not self.send_command(command=mavlink.MAV_CMD_NAV_LAND):
             # TODO: Log
             return False
         
-        if not self.wait_for_disarmed(timeout_s = timeout_s - (time.monotonic() - start_s)):
-            altitude_rel = self.location.global_frame_relative.altitude_rel_m
-
-            if altitude_rel is not None and altitude_rel > 0.5:
-                # TODO: Log failed landing, abort to RTL
-                self.send_command(command=mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH)
+        remaining = timeout_s - (time.monotonic() - start_s)
+        if not self.wait_for_condition(lambda: not self.status.armed, timeout_s=remaining):
+            if not self.altitude_reached(0, threshold_m=0.5):
+                # TODO: Log failed landing
                 return False
             
-            return True
-
         return True
     
-    def wait_for_disarmed(self, timeout_s):
-        """
-        Wait for vehicle to disarm.
-        """
-        start_s = time.monotonic()
-        while time.monotonic() - start_s < timeout_s:
-            if not self.status.armed:
-                return True
-            # TODO: Add abort event waiting here
-            time.sleep(0.1)
-        
-        return False
-        
-
-    def wait_for_armed(self, timeout_s):
-        """
-        Wait for vehicle to be armed.
-        """
-        start_s = time.monotonic()
-        while time.monotonic() - start_s < timeout_s:
-            if self.status.armed:
-                return True
-            time.sleep(0.1)
-            # TODO: Add abort event waiting here
-
-        return False
-    
-    def wait_for_prearm(self, timeout_s):
-        """
-        Wait for vehicle to be prearmed.
-        """
-        start_s = time.monotonic()
-        while time.monotonic() - start_s < timeout_s:
-            if self.status.prearmed:
-                return True
-            time.sleep(0.1)
-            # TODO: Add abort event waiting here
-
-        return False
-
+ 
     def arm(self, timeout_s=30.0):
         """
         Arm vehicle.
         """
         start_s = time.monotonic()
 
-        if not self.wait_for_prearm(timeout_s=timeout_s):
+        if not self.wait_for_condition(lambda: self.status.prearmed, timeout_s=timeout_s):
             #TODO: Log failed prearm
             return False
         
@@ -191,18 +270,20 @@ class VehicleManager:
             #TODO: Log failed arm
             return False
         
-        if not self.wait_for_armed(timeout_s= timeout_s - (time.monotonic() - start_s)):
+        remaining_s = timeout_s - (time.monotonic() - start_s)
+        if not self.wait_for_condition(lambda: self.status.armed, timeout_s=remaining_s):
             #TODO: Log failed arming
             return False
-        
         return True
 
 
-    def move_body_frd_position(self, forward_m, right_m, down_m=0.0, maintain_heading=True, timeout_s=None):
+    def move_body_frd_position(self, forward_m, right_m, down_m=0.0, maintain_heading=True, timeout_s=30.0):
         """
         Move relative to vehicle's FRD frame by Forward/Right. Optionally wait for target to be reached within timeout_s seconds.
         Will maintain current altitude by default.
         """
+        start_s = time.monotonic()
+
         XYZ_POS = mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE & \
         mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE & \
         mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
@@ -213,13 +294,16 @@ class VehicleManager:
         if not maintain_heading:
             typemask = XYZ_POS_YAW
 
-        target_ned = self.convert_frd_to_ned(forward_m, right_m, down_m)
+        target_ned = self.convert_frd_target_to_local_ned_target(forward_m, right_m, down_m)
+        if target_ned is None:
+            # TODO: Log
+            return False
 
         self.mav.set_position_target_local_ned_send(
             time_boot_ms=0,
             target_system=1,
             target_component=0,
-            coordinate_frame=mavlink.MAV_FRAME_BODY_NED,
+            coordinate_frame=mavlink.MAV_FRAME_BODY_OFFSET_NED,
             type_mask=typemask,
             x = forward_m,
             y = right_m,
@@ -234,49 +318,50 @@ class VehicleManager:
             yaw_rate = 0
         )
 
-        if timeout_s is not None:
-            start_s = time.time()
-            while True:
+        remaining_s = timeout_s - (time.monotonic() - start_s)
+        if not self.wait_for_condition(lambda: self.target_ned_reached(target_ned), timeout_s=remaining_s):
+            # Stop movement
+            self.mav.set_position_target_local_ned_send(
+                time_boot_ms=0,
+                target_system=1,
+                target_component=0,
+                coordinate_frame=mavlink.MAV_FRAME_BODY_OFFSET_NED,
+                type_mask=typemask,
+                x = 0,
+                y = 0,
+                z = 0,
+                vx = 0,
+                vy = 0,
+                vz = 0,
+                afx = 0,
+                afy = 0,
+                afz = 0,
+                yaw = 0,
+                yaw_rate = 0
+            )
 
-                if self.target_ned_reached(target_ned):
-                    break
+            return False
 
-                if time.time() - start_s > timeout_s:
-                    self.mav.set_position_target_local_ned_send(
-                        time_boot_ms=0,
-                        target_system=1,
-                        target_component=0,
-                        coordinate_frame=mavlink.MAV_FRAME_BODY_FRD,
-                        type_mask=0b110111111000,
-                        x = 0,
-                        y = 0,
-                        z = 0,
-                        vx = 0,
-                        vy = 0,
-                        vz = 0,
-                        afx = 0,
-                        afy = 0,
-                        afz = 0,
-                        yaw = 0,
-                        yaw_rate = 0
-                    )
-                    # TODO: Return error code or exception
-                    break
+        return True
 
-            time.sleep(0.1)
 
-    def move_global_gps(self, lat_int: int, lon_int: int, alt_m: int):
+    def move_global_gps_relative_alt(self, lat_int: int, lon_int: int, alt_m: int):
         """
-        Move to the given GPS WGS84 coordinates.
+        Move to the given GPS WGS84 coordinates. Altitude is relative to home position. Maintain current heading.
         """
-        #TODO: Test if heading is maintained or not during only lat/lon movement.
-        # If heading is not maintained, use current heading or default to point northward (OR! Home heading?)
+        
+        typemask = mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE & \
+        mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE & \
+        mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
+
+        target_global_rel_alt = MavFrameGlobalRel(lat_int, lon_int, alt_m)
+
         self.mav.set_position_target_global_int_send(
             time_boot_ms=0,
             target_system=1,
             target_component=0,
             coordinate_frame=mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
-            type_mask=0,
+            type_mask=typemask,
             lat_int=lat_int,
             lon_int=lon_int,
             alt=alt_m,
@@ -295,6 +380,8 @@ class VehicleManager:
         Change mode of the flight controller. See: https://ardupilot.org/copter/docs/parameters.html#fltmode1
         Common modes: 'GUIDED', 'LAND', 'CIRCLE'
         """
+        start_s = time.monotonic()
+        
         if self.status.mode_map_byname is None or self.status.mode_map_bynumber is None:
             # TODO: Log None maps
             return False
@@ -314,24 +401,13 @@ class VehicleManager:
             # TODO: Log failure
             return False
         
-        if not self.wait_for_mode(target_mode, timeout_s=timeout_s):
+        remaining_s = timeout_s - (time.monotonic() - start_s)
+        if not self.wait_for_condition(lambda: self.check_mode(target_mode), timeout_s=remaining_s):
             # TODO: Log failure
             return False
         
         return True
 
-    def wait_for_mode(self, target_mode: str | int, timeout_s):
-        """
-        Wait for current mode to be target_mode. Return True if target_mode is detected within timeout_s seconds, False otherwise.
-        """
-        start_s = time.monotonic()
-        while time.monotonic() - start_s < timeout_s:
-            if self.check_mode(target_mode):
-                return True
-            # TODO: Add abort event waiting here
-            time.sleep(0.1)
-
-        return False
 
     def check_mode(self, target_mode: str | int) -> bool:
         """
@@ -348,6 +424,9 @@ class VehicleManager:
         """
         current_ned = self.location.local_ned
 
+        if current_ned is None:
+            return False
+
         dn = current_ned.x_north_m - target_ned.x_north_m
         de = current_ned.y_east_m - target_ned.y_east_m
         dd = current_ned.z_down_m - target_ned.z_down_m
@@ -356,17 +435,25 @@ class VehicleManager:
 
         return distance_m < threshold_m
     
-    def convert_frd_to_ned(self, forward_m, right_m, down_m):
+    def convert_frd_target_to_local_ned_target(self, forward_m, right_m, down_m):
         """
-        Convert FRD target frame to NED target frame.
+        Convert FRD target frame to Local NED target frame, with origin fixed relative to earth.
         """
         yaw_rad = self.location.attitude.yaw_rad
+        current_local_ned = self.location.local_ned
 
-        x_north_m = forward_m * math.cos(yaw_rad) - right_m * math.sin(yaw_rad)
-        y_east_m = forward_m * math.sin(yaw_rad) + right_m * math.sin(yaw_rad)
-        z_down_m = down_m
+        if yaw_rad is None or current_local_ned is None:
+            return None
 
-        return MavFrameLocalNed(x_north_m, y_east_m, z_down_m)
+        dx_north_m = forward_m * math.cos(yaw_rad) - right_m * math.sin(yaw_rad)
+        dy_east_m = forward_m * math.sin(yaw_rad) + right_m * math.cos(yaw_rad)
+        dz_down_m = down_m
+
+        target_x_north_m = current_local_ned.x_north_m + dx_north_m
+        target_y_east_m = current_local_ned.y_east_m + dy_east_m
+        target_z_down_m = current_local_ned.z_down_m + dz_down_m
+
+        return MavFrameLocalNed(target_x_north_m, target_y_east_m, target_z_down_m)
     
     def clear_detection_queue(self):
         """
@@ -394,9 +481,9 @@ class VehicleManager:
         # 8. If second timeout: abort mission, raise exception, return to launch in caller.
         
         last_detection_ned_position = None
-        start_s = time.time()
+        start_s = time.monotonic()
 
-        while time.time() - start_s < timeout_s:
+        while time.monotonic() - start_s < timeout_s:
             try:
                 detection = self.detection_queue.get(timeout=0.5)
                 last_detection_ned_position = self.location.local_ned
@@ -428,7 +515,7 @@ class VehicleManager:
             print(forward_m, right_m, detection.Z_Offset_m)
             self.clear_detection_queue()
             time.sleep(0.1)
-            start_s = time.time()
+            start_s = time.monotonic()
         
     def detect_multiple_objects(self):
         """
@@ -448,9 +535,9 @@ class VehicleManager:
         print("Starting first Circle")
 
         self.circle(radius_m=0.1, center_gps=center_gps)
-        start_s = time.time()
+        start_s = time.monotonic()
         while self.detection_queue.empty():
-            if time.time() - start_s > 16:
+            if time.monotonic() - start_s > 16:
                 break
             time.sleep(0.5)
 
@@ -462,9 +549,9 @@ class VehicleManager:
         print("Starting second Circle")
 
         self.circle(radius_m=0.5, center_gps=center_gps)
-        start_s = time.time()
+        start_s = time.monotonic()
         while self.detection_queue.empty():
-            if time.time() - start_s > 16:
+            if time.monotonic() - start_s > 16:
                 break
             time.sleep(0.5)
 
@@ -480,7 +567,7 @@ class VehicleManager:
         Perform a circle with given radius and center.
         """
 
-        self.move_global_gps(center_gps.lattitude_int, center_gps.longitude_int, center_gps.altitude_m)
+        self.move_global_gps_relative_alt(center_gps.lattitude_int, center_gps.longitude_int, center_gps.altitude_m)
         time.sleep(4)
 
         self.mav.param_set_send(
@@ -493,27 +580,14 @@ class VehicleManager:
         
         self.set_mode("CIRCLE")
 
+    def reset_state(self):
+        """
+        Reset default states after mission completion.
+        """
+        self.cancel_mission_event.clear()
+        self.intended_rtl_land = False
+
     def close(self):
         #self.mav_connection.close()
         # TODO: Check that threads in mavconnection are closed correctly
         self.camera.stop()
-
-# if __name__ == "__main__":
-    
-    # vehicle = VehicleManager("udp:127.0.0.1:14550", source_system=System.INVESTIGATOR)
-    # vehicle.camera.switch_mode("UAV Recovery")
-    # vehicle.set_mode(target_mode="GUIDED")
-    # vehicle.wait_for_armed()
-    # vehicle.takeoff(alt_m=10)
-
-    # vehicle.move_body_frd_position(forward_m=5, right_m=4, down_m=-10, timeout_s=20)
-    # print("Positioned for search.")
-    # detection_gps = vehicle.search_for_detection("UAV Recovery")
-    # print("Search Complete")
-    # if detection_gps is not None:
-    #     vehicle.center_on_marker(timeout_s=100, target_distance_m=0.25)
-
-    # vehicle.set_mode("LAND")
-    # print("DONE")
-
-    # vehicle.close()
