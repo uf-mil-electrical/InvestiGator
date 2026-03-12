@@ -2,9 +2,9 @@ from InvestiGator import MAVConnection
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from config import load_config
 import argparse
-from missions import MISSIONS, MISSION_MENU, send_mission_message_wait_ack, wait_for_mission_complete, valid_mission
 from InvestiGator.constants import MIL_SYSTEM_CMD
 import time
+from gc_helpers import valid_mission, wait_for_mission_complete, send_mission_message_wait_ack, MISSIONS, MISSION_MENU
 
 
 def initialize() -> MAVConnection:

@@ -1,10 +1,11 @@
 from InvestiGator import MAVConnection
 from InvestiGator import VehicleManager
-from InvestiGator.constants import MIL_MISSION_ABORT, MIL_MISSION_CANCEL, MIL_MISSION_CMD
+from InvestiGator.constants import MIL_MISSION_CMD
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 import argparse
 from config import load_config
-from missions import MISSIONS, MISSION_MENU, accept_mission, send_mission_complete, valid_mission
+from missions import MISSIONS, accept_mission, send_mission_complete
+from gc_helpers import valid_mission, MISSION_MENU
 from threading import Event
 
 interactive = False
