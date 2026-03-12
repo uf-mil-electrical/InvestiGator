@@ -552,6 +552,13 @@ class VehicleManager:
         
         self.set_mode("CIRCLE")
 
+    def reset_state(self):
+        """
+        Reset default states after mission completion.
+        """
+        self.cancel_mission_event.clear()
+        self.intended_rtl_land = False
+
     def close(self):
         #self.mav_connection.close()
         # TODO: Check that threads in mavconnection are closed correctly

@@ -68,10 +68,10 @@ def main():
                     command_event.clear()
                     continue
                 
-                vehicle.cancel_mission_event.clear()
                 success = MISSIONS[mission_number].function(vehicle)
                 send_mission_complete(connection, mission_number, success=success)
 
+                vehicle.reset_state()
                 command_event.clear()
         
         else:
