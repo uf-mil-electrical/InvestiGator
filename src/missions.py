@@ -152,10 +152,14 @@ def build_mission_menu() -> str:
     menu = "--- Select Mission ---\n"
     for i, mission in enumerate(MISSIONS):
         menu += f"{i}) {mission.name}\n"
+    menu += "--- System Commands ---\n"
+    menu += "p) Ping Companion Computer\n"
+    menu += "g) Set mode to GUIDED\n"
+    menu += "u) Set uncontrolled (for testing abort)\n"
+    menu += "c) Cancel mission (for testing cancel)\n"
     return menu
 
 
-@mission("Ping Companion Computer")
 def answer_ping(vehicle: VehicleManager):
     """
     Answer ping from ground control. Ping successful if this function is called by companion computer. 

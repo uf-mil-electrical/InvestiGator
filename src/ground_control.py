@@ -57,6 +57,21 @@ def main():
                     param7 = 0)
                 continue
 
+            if mission_number == "u" or mission_number == "c":
+                connection.mav.command_long_send(
+                    target_system = 1,
+                    target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
+                    command = MIL_SYSTEM_CMD,
+                    confirmation = 0,
+                    param1 = 2 if mission_number == "u" else 3,
+                    param2 = 0,
+                    param3 = 0,
+                    param4 = 0,
+                    param5 = 0,
+                    param6 = 0,
+                    param7 = 0)
+                continue
+
             if not valid_mission(mission_number):
                 continue
 

@@ -71,6 +71,8 @@ class VehicleManager:
         Handle system commands from ground control through MIL_SYSTEM_CMD.
         param1 = 0: Ping companion computer.
         param1 = 1: Set mode to GUIDED.
+        param1 = 2: Set uncontrolled
+        param1 = 3: Set cancel mission
         """
         if message.command == MIL_SYSTEM_CMD:
             if message.param1 == 0:
@@ -81,6 +83,14 @@ class VehicleManager:
                     # Run command in a separate thread to not block subscription manager.
                     print("Received system command: GUIDED. Setting mode to GUIDED.")
                     Thread(target=self.set_mode, args=("GUIDED",), daemon=True).start()
+            elif message.param1 == 2:
+                print("Received system command: Set uncontrolled.")
+                self.cancel_mission_event.set()
+                self.uncontrolled_event.set()
+                Thread(target=self.set_mode, args=("RTL",), daemon=True).start()
+            elif message.param1 == 3:
+                print("Received system command: Cancel mission.")
+                self.cancel_mission_event.set()
 
 
     def clear_uncontrolled_event(self, message: mavlink.MAVLink_heartbeat_message):
