@@ -1,9 +1,10 @@
 from InvestiGator import MAVConnection
 from InvestiGator import VehicleManager
+from InvestiGator.constants import MIL_MISSION_ABORT, MIL_MISSION_CANCEL, MIL_MISSION_CMD
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 import argparse
 from config import load_config
-from missions import MISSIONS, MIL_MISSION_CMD, MISSION_MENU, accept_mission, send_mission_complete, valid_mission
+from missions import MISSIONS, MISSION_MENU, accept_mission, send_mission_complete, valid_mission
 from threading import Event
 
 interactive = False
@@ -49,12 +50,17 @@ def main():
         if message.command == MIL_MISSION_CMD and not command_event.is_set():
             nonlocal mission_number
             mission_number = int(message.param1)
-            command_event.set()            
+            command_event.set() 
 
     try:
         if not interactive:
             while True:
                 if not command_event.wait(timeout=0.5):
+                    continue
+                
+                if vehicle.uncontrolled_event.is_set():
+                    send_mission_complete(connection, mission_number, result = mavlink.MAV_RESULT_DENIED)
+                    command_event.clear()
                     continue
 
                 if not accept_mission(connection=connection, mission_number=mission_number):
@@ -62,8 +68,10 @@ def main():
                     command_event.clear()
                     continue
                 
+                vehicle.cancel_mission_event.clear()
                 success = MISSIONS[mission_number].function(vehicle)
                 send_mission_complete(connection, mission_number, success=success)
+
                 command_event.clear()
         
         else:

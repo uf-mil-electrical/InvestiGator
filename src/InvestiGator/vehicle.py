@@ -11,6 +11,7 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from .mavconnection import MAVConnection
 from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
 from .camera import Camera, MarkerDetection
+from .constants import MIL_MISSION_CANCEL, MIL_MISSION_ABORT
 
 
 class VehicleManager:
@@ -22,6 +23,8 @@ class VehicleManager:
         self.mav_connection = mav_connection
 
         self.cancel_mission_event = Event()
+        self.uncontrolled_event = Event()
+        self.uncontrolled_event.set()
 
         self.detection_queue: Queue[MarkerDetection] = Queue()
         self.camera = Camera(self.detection_queue, preview=True)
@@ -37,9 +40,59 @@ class VehicleManager:
         self.location = Location(self)
         self.status = Status(self)
 
+        self.intended_rtl_land = False
+
+        self.MANUAL_MODES = {"LOITER", "STABILIZE", "ALT_HOLD"}
+        self.LANDING_MODES = {"LAND", "RTL"}
+
         self.configure_messages()
         self.wait_for_condition(self.properties_populated)
 
+        self.subscribe(mavlink.MAVLink_command_long_message.msgname)(self.handle_abort_cancel)
+        self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.clear_uncontrolled_event)
+        self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.check_intended_mode)
+
+
+    def handle_abort_cancel(self, message: mavlink.MAVLink_command_long_message):
+        """
+        Set uncontrolled and cancel events when the relevant MIL_MISSION command is received.
+        Subscribed to MAVLink_command_long_message.
+        """
+        if message.command == MIL_MISSION_CANCEL:
+            self.cancel_mission_event.set()
+        if message.command == MIL_MISSION_ABORT:
+            self.uncontrolled_event.set()
+            self.cancel_mission_event.set()
+
+
+    def clear_uncontrolled_event(self, message: mavlink.MAVLink_heartbeat_message):
+        """
+        Clears uncontrolled event when mode is changed to GUIDED. Subscribed to heartbeat messages.
+        """
+        if message.get_srcSystem() != 1:
+            return
+        if self.check_mode("GUIDED") and self.uncontrolled_event.is_set():
+            print("Uncontrolled event cleared due to mode change to GUIDED.")
+            self.uncontrolled_event.clear()
+            self.cancel_mission_event.clear()
+            self.intended_rtl_land = False
+
+    
+    def check_intended_mode(self, message: mavlink.MAVLink_heartbeat_message):
+        """
+        Check if mode is changed by an external source. 
+        If so, trigger an abort and cede control of drone until mode is changed back to guided.
+        """
+        if message.get_srcSystem() != 1:
+            return
+        
+        manual_control = self.status.mode_string in self.MANUAL_MODES
+        unintended_landing = self.status.mode_string in self.LANDING_MODES and not self.intended_rtl_land
+
+        if manual_control or unintended_landing:
+            self.uncontrolled_event.set()
+            self.cancel_mission_event.set()
+    
 
     def configure_messages(self):
         """
