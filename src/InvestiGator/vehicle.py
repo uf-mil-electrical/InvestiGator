@@ -192,7 +192,6 @@ class VehicleManager:
         remaining_s = timeout_s - (time.monotonic() - start_s)
         if not self.wait_for_condition(lambda: self.altitude_reached(alt_m), timeout_s=remaining_s):
             # TODO: Log failed altitude, altitude reached, and aborting to RTL
-            self.send_command(command=mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH)
             return False
         
         return True
@@ -214,6 +213,8 @@ class VehicleManager:
         """
         start_s = time.monotonic()
 
+        self.intended_rtl_land = True
+
         if not self.send_command(command=mavlink.MAV_CMD_NAV_LAND):
             # TODO: Log
             return False
@@ -221,8 +222,7 @@ class VehicleManager:
         remaining = timeout_s - (time.monotonic() - start_s)
         if not self.wait_for_condition(lambda: not self.status.armed, timeout_s=remaining):
             if not self.altitude_reached(0, threshold_m=0.5):
-                # TODO: Log failed landing, abort to RTL
-                self.send_command(command=mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH)
+                # TODO: Log failed landing
                 return False
             
         return True
