@@ -246,5 +246,23 @@ def square_test(vehicle:VehicleManager):
 
     return vehicle.land()
 
+@mission("Wait for cancel/abort")
+def wait_for_cancel(vehicle: VehicleManager):
+    print("Waiting for cancel or abort command...")
+    while True:
+        if vehicle.uncontrolled_event.is_set():
+            print("Abort command received.")
+            break
+        elif vehicle.cancel_mission_event.is_set():
+            print("Cancel command received.")
+            return True
+        time.sleep(0.1)
+
+    while True:
+        if not vehicle.uncontrolled_event.is_set():
+            print("Abort cleared")
+            return True
+        time.sleep(0.1) 
+
 # This must be called at the end of this file after MISSIONS list is populated by mission decorators.
 MISSION_MENU = build_mission_menu()
