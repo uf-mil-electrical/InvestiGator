@@ -71,7 +71,9 @@ class MissionControl(App):
                 self.add_class("guided_mode")
             if self.has_class("mission_abort"):
                 self.remove_class("mission_abort")
-                self.query_one(Select).disabled = False
+                selector = self.query_one(Select)
+                selector.disabled = False
+                selector.clear()
 
         elif event.button.id == "recording_button":
             if not self.has_class("recording_enabled"):
