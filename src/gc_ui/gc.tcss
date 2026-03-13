@@ -4,6 +4,11 @@
     border-title-align: center;
 }
 
+Button:focus {
+    # Disable text background on focus
+    text-style: none;
+}
+
 #left {
     width: 45%;
 }
