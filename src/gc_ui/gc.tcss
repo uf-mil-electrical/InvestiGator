@@ -24,5 +24,31 @@
 
 #start_mission_button {
     margin-top: 1;
-    width: 50%;
+    width: 40%;
+}
+
+#cancel_mission_button {
+    margin-top: 1;
+    width: 40%;
+    display: None;
+}
+
+# ################################
+#      Mission Started Class     #
+# ################################
+
+.mission_started #start_mission_button{
+    display: None;
+}
+
+.mission_started #cancel_mission_button {
+    display: block;
+}
+
+.mission_started #mission_selector {
+    color: red;
+}
+
+.mission_started #mission_select_panel {
+    background: $surface-darken-2;
 }

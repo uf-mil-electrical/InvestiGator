@@ -27,6 +27,8 @@ class MissionControl(App):
                             yield Select(MISSIONS, id="mission_selector")
                         with Center():
                             yield Button("Start Mission", variant="primary", id="start_mission_button")
+                        with Center():
+                            yield Button("Cancel Mission", variant="error", id="cancel_mission_button")
 
                     with Vertical(id="system_panel", classes="panel") as system_panel:
                         system_panel.border_title = "System Commands"
@@ -35,6 +37,16 @@ class MissionControl(App):
                 log_panel.border_title = "Mission Log"
                 
         yield Footer()
+
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "start_mission_button":
+            self.add_class("mission_started")
+            self.query_one(Select).disabled = True
+        elif event.button.id == "cancel_mission_button":
+            self.remove_class("mission_started")
+            self.query_one(Select).disabled = False
+
 
     def on_mount(self):
         self.theme = "nord"
