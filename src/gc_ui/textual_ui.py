@@ -24,7 +24,7 @@ class MissionControl(App):
                     with Vertical(id="mission_select_panel", classes="panel") as mission_select_panel:
                         mission_select_panel.border_title = "Mission Select"
                         with Center():
-                            yield Select(MISSIONS, id="mission_selector")
+                            Select(MISSIONS, id="mission_selector", prompt="Select Mission")
                         with Center():
                             yield Button("Start Mission", variant="primary", id="start_mission_button")
                         with Center():
@@ -41,8 +41,13 @@ class MissionControl(App):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "start_mission_button":
+            selector = self.query_one(Select)
+            if selector.value == Select.NULL:
+                return
+            
             self.add_class("mission_started")
-            self.query_one(Select).disabled = True
+            selector.disabled = True
+
         elif event.button.id == "cancel_mission_button":
             self.remove_class("mission_started")
             self.query_one(Select).disabled = False
