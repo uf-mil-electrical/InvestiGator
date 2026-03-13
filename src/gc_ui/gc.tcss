@@ -1,0 +1,6 @@
+.panel {
+    background: $surface;
+    border: panel $secondary;
+    border-title-align: center;
+    margin: 1
+}
