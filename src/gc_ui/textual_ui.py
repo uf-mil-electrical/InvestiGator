@@ -1,6 +1,6 @@
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Button, Select, Label, RichLog
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, Center
 
 MISSIONS = [("Mission 1", 0), ("Mission 2", 1), ("Mission 3", 2)]
 
@@ -23,8 +23,11 @@ class MissionControl(App):
                 with Horizontal(id="bottom_left"):
                     with Vertical(id="mission_select_panel", classes="panel") as mission_select_panel:
                         mission_select_panel.border_title = "Mission Select"
-                        yield Select(MISSIONS, id="mission_selector")
-                    
+                        with Center():
+                            yield Select(MISSIONS, id="mission_selector")
+                        with Center():
+                            yield Button("Start Mission", variant="primary", id="start_mission_button")
+
                     with Vertical(id="system_panel", classes="panel") as system_panel:
                         system_panel.border_title = "System Commands"
             
