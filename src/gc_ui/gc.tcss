@@ -1,5 +1,5 @@
 .panel {
-    background: $surface;
+    background: $surface-lighten-1;
     border: panel $secondary;
     border-title-align: center;
 }
@@ -12,6 +12,10 @@
     height: 55%;
     margin-bottom: 1
 }
+
+# ################################
+#      Mission Select Panel      #
+# ################################
 
 #mission_select_panel {
     width: 2fr;
@@ -31,6 +35,25 @@
     margin-top: 1;
     width: 40%;
     display: None;
+}
+
+# ################################
+#      System Commands Panel     #
+# ################################
+#system_panel {
+    align: center middle;
+}
+
+#recording_button {
+}
+
+#mission_abort_button {
+    margin-top: 1;
+    margin-bottom: 1;
+}
+
+#set_guided_button {
+
 }
 
 # ################################

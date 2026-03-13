@@ -32,6 +32,13 @@ class MissionControl(App):
 
                     with Vertical(id="system_panel", classes="panel") as system_panel:
                         system_panel.border_title = "System Commands"
+                        with Center():
+                            yield Button(id="recording_button", label="Toggle Recording")
+                        with Center():
+                            yield Button(id="mission_abort_button", label="Abort")
+                        with Center():
+                            yield Button(id="set_guided_button", label="Enable Guided")
+
             
             with Vertical(id="log_panel", classes="panel") as log_panel:
                 log_panel.border_title = "Mission Log"
