@@ -1,4 +1,3 @@
-from numpy import var
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Button, Select, Label, RichLog
 from textual.containers import Horizontal, Vertical
