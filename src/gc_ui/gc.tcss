@@ -37,6 +37,10 @@
     display: None;
 }
 
+#uncontrolled_state_message {
+    display: None;
+}
+
 # ################################
 #      System Commands Panel     #
 # ################################
@@ -74,4 +78,30 @@
 
 .mission_started #mission_select_panel {
     background: $surface-darken-2;
+}
+
+# ################################
+#        Mission Abort Class     #
+# ################################
+
+.mission_abort #mission_select_panel {
+    background: $surface-darken-2;
+}
+
+.mission_abort #start_mission_button {
+    display: None;
+}
+
+.mission_abort #mission_selector {
+    display: None;
+}
+
+.mission_abort #uncontrolled_state_message {
+    display: block;
+    content-align: center middle;
+    margin-top: 2;
+}
+
+.mission_abort #cancel_mission_button {
+    display: None;
 }
