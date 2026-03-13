@@ -34,12 +34,12 @@ class MissionControl(App):
 
                     with Vertical(id="system_panel", classes="panel") as system_panel:
                         system_panel.border_title = "System Commands"
+                        # with Center():
+                        #     yield Button(id="recording_button", label="Toggle Recording")
                         with Center():
-                            yield Button(id="recording_button", label="Toggle Recording")
+                            yield Button(id="abort_mission_button", label="Abort", variant="error")
                         with Center():
-                            yield Button(id="abort_mission_button", label="Abort")
-                        with Center():
-                            yield Button(id="set_guided_button", label="Enable Guided")
+                            yield Button(id="set_guided_button", label="Enable Guided", variant="success")
 
             
             with Vertical(id="log_panel", classes="panel") as log_panel:
@@ -53,18 +53,27 @@ class MissionControl(App):
             selector = self.query_one(Select)
             if selector.value == Select.NULL:
                 return
-            
             self.add_class("mission_started")
             selector.disabled = True
+            guided_button = self.query_one("#set_guided_button", Button)
+            guided_button.disabled = True
+            guided_button.variant = "primary"
 
         elif event.button.id == "cancel_mission_button":
             self.remove_class("mission_started")
             self.query_one(Select).disabled = False
+            guided_button = self.query_one("#set_guided_button", Button)
+            guided_button.disabled = False
+            guided_button.variant = "success"
 
         elif event.button.id == "abort_mission_button":
             if not self.has_class("mission_abort"):
                 self.add_class("mission_abort")
                 self.remove_class("mission_started")
+                self.query_one("#abort_mission_button", Button).disabled = True
+                guided_button = self.query_one("#set_guided_button", Button)
+                guided_button.disabled = False
+                guided_button.variant = "success"
 
         elif event.button.id == "set_guided_button":
             if not self.has_class("guided_mode"):
@@ -74,6 +83,7 @@ class MissionControl(App):
                 selector = self.query_one(Select)
                 selector.disabled = False
                 selector.clear()
+                self.query_one("#abort_mission_button", Button).disabled = False
 
         elif event.button.id == "recording_button":
             if not self.has_class("recording_enabled"):
