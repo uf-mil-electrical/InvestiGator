@@ -2,5 +2,17 @@
     background: $surface;
     border: panel $secondary;
     border-title-align: center;
-    margin: 1
+}
+
+#left {
+    width: 45%;
+}
+
+#status_panel {
+    height: 55%;
+    margin-bottom: 1
+}
+
+#mission_select_panel {
+    width: 60%;
 }

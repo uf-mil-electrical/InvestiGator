@@ -15,14 +15,12 @@ class MissionControl(App):
         """Create child widgets for the app."""
         yield Header()
 
-        # Children will be ordered left to right
         with Horizontal():
-            # Children will be ordered top to bottom
-            with Vertical():
+            with Vertical(id="left"):
                 with Vertical(id="status_panel", classes="panel") as status_panel:
                     status_panel.border_title = "Drone Status"
 
-                with Horizontal():
+                with Horizontal(id="bottom_left"):
                     with Vertical(id="mission_select_panel", classes="panel") as mission_select_panel:
                         mission_select_panel.border_title = "Mission Select"
                     
