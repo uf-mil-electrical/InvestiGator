@@ -24,7 +24,7 @@ class MissionControl(App):
                     with Vertical(id="mission_select_panel", classes="panel") as mission_select_panel:
                         mission_select_panel.border_title = "Mission Select"
                         with Center():
-                            Select(MISSIONS, id="mission_selector", prompt="Select Mission")
+                            yield Select(MISSIONS, id="mission_selector", prompt="Select Mission")
                         with Center():
                             yield Button("Start Mission", variant="primary", id="start_mission_button")
                         with Center():
