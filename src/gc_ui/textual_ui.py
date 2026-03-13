@@ -23,6 +23,7 @@ class MissionControl(App):
                 with Horizontal(id="bottom_left"):
                     with Vertical(id="mission_select_panel", classes="panel") as mission_select_panel:
                         mission_select_panel.border_title = "Mission Select"
+                        yield Select(MISSIONS, id="mission_selector")
                     
                     with Vertical(id="system_panel", classes="panel") as system_panel:
                         system_panel.border_title = "System Commands"

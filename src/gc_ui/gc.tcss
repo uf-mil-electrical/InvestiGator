@@ -15,4 +15,5 @@
 
 #mission_select_panel {
     width: 60%;
+    padding-top: 3
 }
