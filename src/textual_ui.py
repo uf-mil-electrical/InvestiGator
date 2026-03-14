@@ -138,12 +138,11 @@ class MissionControl(App):
     
 
     def on_mavlink_statustext(self, message: mavlink.MAVLink_statustext_message):
-        if message.get_srcSystem() != 1:
-            return
         self.call_from_thread(self.statustext_callback, message)
 
     def statustext_callback(self, message: mavlink.MAVLink_statustext_message):
-        pass
+        color = MAV_SEVERITY_TO_COLOR.get(message.severity, "")
+        print(f"{message.get_srcSystem()}:{message.get_srcComponent()}:[{color}]{message.text}[/{color}]")
 
 
     def compose(self) -> ComposeResult:
@@ -239,6 +238,7 @@ class MissionControl(App):
         self.connection.subscribe(mavlink.MAVLink_attitude_message.msgname)(self.on_mavlink_attitude)
         self.connection.subscribe(mavlink.MAVLink_global_position_int_message.msgname)(self.on_mavlink_global_position_int)
         self.connection.subscribe(mavlink.MAVLink_position_target_local_ned_message.msgname)(self.on_mavlink_position_target_local_ned)
+        self.connection.subscribe(mavlink.MAVLink_statustext_message.msgname)(self.on_mavlink_statustext)
 
 if __name__ == "__main__":
     connection = MAVConnection("tcp:127.0.0.1:5762")
