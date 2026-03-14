@@ -142,7 +142,13 @@ class MissionControl(App):
 
     def statustext_callback(self, message: mavlink.MAVLink_statustext_message):
         color = MAV_SEVERITY_TO_COLOR.get(message.severity, "")
-        print(f"{message.get_srcSystem()}:{message.get_srcComponent()}:[{color}]{message.text}[/{color}]")
+        if color: 
+            formatted_message = f"{message.get_srcSystem()}:{message.get_srcComponent()}:[{color}]{message.text}[/{color}]"
+        else:
+            formatted_message = f"{message.get_srcSystem()}:{message.get_srcComponent()}:{message.text}"
+            
+        print(formatted_message)
+        self.query_one(RichLog).write(formatted_message)
 
 
     def compose(self) -> ComposeResult:
@@ -183,6 +189,7 @@ class MissionControl(App):
             
             with Vertical(id="log_panel", classes="panel") as log_panel:
                 log_panel.border_title = "Mission Log"
+                yield RichLog(id="rich_log", wrap=True)
                 
         yield Footer()
 
