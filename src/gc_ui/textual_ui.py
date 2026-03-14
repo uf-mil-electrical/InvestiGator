@@ -1,8 +1,16 @@
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Button, Select, Label, RichLog, Static
+from textual.widgets import Header, Footer, Button, Select, Label, RichLog, Static, DataTable
 from textual.containers import Horizontal, Vertical, Center
 
 MISSIONS = [("Mission 1", 0), ("Mission 2", 1), ("Mission 3", 2)]
+
+STATUS_TABLE_ROWS = [
+    "Arm Status",
+    "Flight Mode",
+    "State",
+    "GPS Location",
+    "NED Location",
+]
 
 class MissionControl(App):
     """
@@ -19,6 +27,11 @@ class MissionControl(App):
             with Vertical(id="left"):
                 with Vertical(id="status_panel", classes="panel") as status_panel:
                     status_panel.border_title = "Drone Status"
+                    with DataTable(show_header=False, id="status_table") as table:
+                        table.add_column("Key", key="key")
+                        table.add_column("Value", key="value")
+                        for label in STATUS_TABLE_ROWS:
+                            table.add_row(label, key=label)
 
                 with Horizontal(id="bottom_left"):
                     with Vertical(id="mission_select_panel", classes="panel") as mission_select_panel:
@@ -92,6 +105,7 @@ class MissionControl(App):
 
     def on_mount(self):
         self.theme = "nord"
+        self.query_one(DataTable).update_cell(row_key="Arm Status", column_key="value", value="Test")
 
 if __name__ == "__main__":
     app = MissionControl()
