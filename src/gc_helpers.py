@@ -113,11 +113,15 @@ def send_command(connection: MAVConnection, command: int, param1=0.0, param2=0.0
 def configure_messages(connection: MAVConnection):
     """
     Send requests for messages from autopilot to ensure required data is being sent.
+    param2 is interval requested in microseconds.
     """
-    send_command(connection=connection, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, param2=10000)
-    send_command(connection=connection, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED, param2=10000)
-    send_command(connection=connection, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_SYS_STATUS, param2=10000)
-    send_command(connection=connection, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_ATTITUDE, param2=10000)
+    ten_hz_us = (1/10) * 1E6
+    five_hz_us = (1/5) * 1E6
+
+    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, param2=five_hz_us)
+    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED, param2=five_hz_us)
+    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_SYS_STATUS, param2=five_hz_us)
+    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_ATTITUDE, param2=five_hz_us)
 
 
 MISSION_MENU = build_mission_menu()
