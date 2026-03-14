@@ -3,12 +3,14 @@ from textual.widgets import Header, Footer, Button, Select, Label, RichLog, Stat
 from textual.containers import Horizontal, Vertical, Center
 
 from InvestiGator import MAVConnection
+import gc_helpers
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from pymavlink import mavutil
 
 MISSIONS = [("Mission 1", 0), ("Mission 2", 1), ("Mission 3", 2)]
 
 STATUS_TABLE_ROWS = [
+    "Prearm Status",
     "Arm Status",
     "Flight Mode",
     "State",
@@ -46,6 +48,19 @@ class MissionControl(App):
         table = self.query_one(DataTable)
         table.update_cell(row_key="Arm Status", column_key="value", value=armed)
         table.update_cell(row_key="Flight Mode", column_key="value", value=mode)
+
+    
+    def on_mavlink_sys_status(self, message: mavlink.MAVLink_sys_status_message):
+        if message.get_srcSystem() != 1:
+            return
+        self.call_from_thread(self.sys_status_callback, message)
+
+    def sys_status_callback(self, message: mavlink.MAVLink_sys_status_message):
+        prearmed = bool(message.onboard_control_sensors_health & mavlink.MAV_SYS_STATUS_PREARM_CHECK)
+        prearmed = "Prearmed" if prearmed else "Prearm Failing"
+
+        table = self.query_one(DataTable)
+        table.update_cell(row_key="Prearm Status", column_key="value", value=prearmed)
 
 
     def compose(self) -> ComposeResult:
@@ -134,7 +149,9 @@ class MissionControl(App):
 
     def on_mount(self):
         self.theme = "nord"
+        gc_helpers.configure_messages(connection)
         self.connection.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.on_mavlink_heartbeat)
+        self.connection.subscribe(mavlink.MAVLink_sys_status_message.msgname)(self.on_mavlink_sys_status)
 
 
 if __name__ == "__main__":
