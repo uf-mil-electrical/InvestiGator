@@ -24,6 +24,17 @@ STATUS_TABLE_ROWS = [
     "Heading"
 ]
 
+MAV_SEVERITY_TO_COLOR = {
+    mavlink.MAV_SEVERITY_EMERGENCY: "bold red",
+    mavlink.MAV_SEVERITY_ALERT: "red",
+    mavlink.MAV_SEVERITY_CRITICAL: "",
+    mavlink.MAV_SEVERITY_ERROR: "",
+    mavlink.MAV_SEVERITY_WARNING: "yellow",
+    mavlink.MAV_SEVERITY_NOTICE: "",
+    mavlink.MAV_SEVERITY_INFO: "green",
+    mavlink.MAV_SEVERITY_DEBUG: "",
+}
+
 class MissionControl(App):
     """
     Mission Control textual app
@@ -132,23 +143,7 @@ class MissionControl(App):
         self.call_from_thread(self.statustext_callback, message)
 
     def statustext_callback(self, message: mavlink.MAVLink_statustext_message):
-        match message.severity:
-            case mavlink.MAV_SEVERITY_EMERGENCY:
-                pass
-            case mavlink.MAV_SEVERITY_ALERT:
-                pass
-            case mavlink.MAV_SEVERITY_CRITICAL:
-                pass
-            case mavlink.MAV_SEVERITY_ERROR:
-                pass
-            case mavlink.MAV_SEVERITY_WARNING:
-                pass
-            case mavlink.MAV_SEVERITY_NOTICE:
-                pass
-            case mavlink.MAV_SEVERITY_INFO:
-                pass
-            case mavlink.MAV_SEVERITY_DEBUG:
-                pass
+        pass
 
 
     def compose(self) -> ComposeResult:
