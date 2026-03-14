@@ -21,6 +21,7 @@ STATUS_TABLE_ROWS = [
     "NED Velocity",
     "Relative Altitude",
     "Attitude Degrees",
+    "Heading"
 ]
 
 class MissionControl(App):
@@ -89,9 +90,24 @@ class MissionControl(App):
     
     def attitude_callback(self, message: mavlink.MAVLink_attitude_message):
         attitude = f"{math.degrees(message.roll):.2f} | {math.degrees(message.pitch):.2f} | {math.degrees(message.yaw):.2f}"
-        print("Is this thing on?")
+
         table = self.query_one(DataTable)
-        table.update_cell(row_key="Attitude", column_key="value", value=attitude)
+        table.update_cell(row_key="Attitude Degrees", column_key="value", value=attitude)
+
+    
+    def on_mavlink_global_position_int(self, message: mavlink.MAVLink_global_position_int_message):
+        if message.get_srcSystem() != 1:
+            return
+        self.call_from_thread(self.global_position_int_callback, message)
+
+    def global_position_int_callback(self, message: mavlink.MAVLink_global_position_int_message):
+        alt_rel_m = f"{message.relative_alt / 1000:.2f}" # Given in mm
+        heading_deg = f"{message.hdg / 100:.2f}" # Given in cdeg
+
+        table = self.query_one(DataTable)
+        table.update_cell(row_key="Relative Altitude", column_key="value", value=alt_rel_m)
+        table.update_cell(row_key="Heading", column_key="value", value=heading_deg)
+
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
@@ -184,6 +200,7 @@ class MissionControl(App):
         self.connection.subscribe(mavlink.MAVLink_sys_status_message.msgname)(self.on_mavlink_sys_status)
         self.connection.subscribe(mavlink.MAVLink_local_position_ned_message.msgname)(self.on_mavlink_local_position_ned)
         self.connection.subscribe(mavlink.MAVLink_attitude_message.msgname)(self.on_mavlink_attitude)
+        self.connection.subscribe(mavlink.MAVLink_global_position_int_message.msgname)(self.on_mavlink_global_position_int)
 
 if __name__ == "__main__":
     connection = MAVConnection("tcp:127.0.0.1:5762")
