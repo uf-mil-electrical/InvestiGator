@@ -14,8 +14,11 @@ STATUS_TABLE_ROWS = [
     "Arm Status",
     "Flight Mode",
     "State",
-    "GPS Location",
     "NED Location",
+    "NED Target",
+    "NED Error",
+    "NED Velocity",
+    "Relative Altitude",
 ]
 
 class MissionControl(App):
@@ -63,6 +66,20 @@ class MissionControl(App):
         table.update_cell(row_key="Prearm Status", column_key="value", value=prearmed)
 
 
+    def on_mavlink_local_position_ned(self, message: mavlink.MAVLink_local_position_ned_message):
+        if message.get_srcSystem() != 1:
+            return
+        self.call_from_thread(self.local_position_ned_callback, message)
+
+    def local_position_ned_callback(self, message: mavlink.MAVLink_local_position_ned_message):
+        position = f"{message.x:.2f} | {message.y:.2f} | {message.z:.2f}"
+        velocity = f"{message.vx:.2f} | {message.vy:.2f} | {message.vz:.2f}"
+
+        table = self.query_one(DataTable)
+        table.update_cell(row_key="NED Location",column_key="value", value=position)
+        table.update_cell(row_key="NED Velocity", column_key="value", value=velocity)
+
+
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
         yield Header()
@@ -73,7 +90,7 @@ class MissionControl(App):
                     status_panel.border_title = "Drone Status"
                     with DataTable(show_header=False, id="status_table", show_cursor=False) as table:
                         table.add_column("Key", key="key")
-                        table.add_column("Value", key="value", width=30)
+                        table.add_column("Value", key="value", width=40)
                         for label in STATUS_TABLE_ROWS:
                             table.add_row(label, key=label)
 
@@ -152,7 +169,7 @@ class MissionControl(App):
         gc_helpers.configure_messages(connection)
         self.connection.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.on_mavlink_heartbeat)
         self.connection.subscribe(mavlink.MAVLink_sys_status_message.msgname)(self.on_mavlink_sys_status)
-
+        self.connection.subscribe(mavlink.MAVLink_local_position_ned_message.msgname)(self.on_mavlink_local_position_ned)
 
 if __name__ == "__main__":
     connection = MAVConnection("tcp:127.0.0.1:5762")
