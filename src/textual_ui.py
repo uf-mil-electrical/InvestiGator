@@ -109,6 +109,23 @@ class MissionControl(App):
         table.update_cell(row_key="Heading", column_key="value", value=heading_deg)
 
 
+    def on_mavlink_position_target_local_ned(self, message: mavlink.MAVLink_position_target_local_ned_message):
+        if message.get_srcSystem() != 1:
+            return
+        self.call_from_thread(self.position_target_local_ned_callback, message)
+    
+    def position_target_local_ned_callback(self, message: mavlink.MAVLink_position_target_local_ned_message):
+        target_ned = f"{message.x:.2f} | {message.y:.2f} | {message.z:.2f}"
+        
+        table = self.query_one(DataTable)
+        current_ned_str = table.get_cell(row_key="NED Location", column_key="value")
+        current_ned_str = current_ned_str.split('|')
+        ned_error = f"{message.x - float(current_ned_str[0])} | {message.y - float(current_ned_str[1])} | {message.z - float(current_ned_str[2])}"
+
+        table.update_cell(row_key="NED Target", column_key="value", value=target_ned)
+        table.update_cell(row_key="NED Error", column_key="value", value=ned_error)
+
+
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
         yield Header()
@@ -121,7 +138,7 @@ class MissionControl(App):
                         table.add_column("Key", key="key")
                         table.add_column("Value", key="value", width=40)
                         for label in STATUS_TABLE_ROWS:
-                            table.add_row(label, key=label)
+                            table.add_row(label, "--", key=label)
 
                 with Horizontal(id="bottom_left"):
                     with Vertical(id="mission_select_panel", classes="panel") as mission_select_panel:
@@ -201,6 +218,7 @@ class MissionControl(App):
         self.connection.subscribe(mavlink.MAVLink_local_position_ned_message.msgname)(self.on_mavlink_local_position_ned)
         self.connection.subscribe(mavlink.MAVLink_attitude_message.msgname)(self.on_mavlink_attitude)
         self.connection.subscribe(mavlink.MAVLink_global_position_int_message.msgname)(self.on_mavlink_global_position_int)
+        self.connection.subscribe(mavlink.MAVLink_position_target_local_ned_message.msgname)(self.on_mavlink_position_target_local_ned)
 
 if __name__ == "__main__":
     connection = MAVConnection("tcp:127.0.0.1:5762")

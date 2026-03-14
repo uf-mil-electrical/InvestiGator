@@ -122,6 +122,7 @@ def configure_messages(connection: MAVConnection):
     send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED, param2=five_hz_us)
     send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_SYS_STATUS, param2=five_hz_us)
     send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_ATTITUDE, param2=five_hz_us)
+    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_POSITION_TARGET_LOCAL_NED, param2=five_hz_us)
 
 
 MISSION_MENU = build_mission_menu()
