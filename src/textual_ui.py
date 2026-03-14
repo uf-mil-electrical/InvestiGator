@@ -1,3 +1,4 @@
+import math
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Button, Select, Label, RichLog, Static, DataTable
 from textual.containers import Horizontal, Vertical, Center
@@ -19,6 +20,7 @@ STATUS_TABLE_ROWS = [
     "NED Error",
     "NED Velocity",
     "Relative Altitude",
+    "Attitude Degrees",
 ]
 
 class MissionControl(App):
@@ -79,6 +81,17 @@ class MissionControl(App):
         table.update_cell(row_key="NED Location",column_key="value", value=position)
         table.update_cell(row_key="NED Velocity", column_key="value", value=velocity)
 
+
+    def on_mavlink_attitude(self, message: mavlink.MAVLink_attitude_message):
+        if message.get_srcSystem() != 1:
+            return
+        self.call_from_thread(self.attitude_callback, message)
+    
+    def attitude_callback(self, message: mavlink.MAVLink_attitude_message):
+        attitude = f"{math.degrees(message.roll):.2f} | {math.degrees(message.pitch):.2f} | {math.degrees(message.yaw):.2f}"
+        print("Is this thing on?")
+        table = self.query_one(DataTable)
+        table.update_cell(row_key="Attitude", column_key="value", value=attitude)
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
@@ -170,6 +183,7 @@ class MissionControl(App):
         self.connection.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.on_mavlink_heartbeat)
         self.connection.subscribe(mavlink.MAVLink_sys_status_message.msgname)(self.on_mavlink_sys_status)
         self.connection.subscribe(mavlink.MAVLink_local_position_ned_message.msgname)(self.on_mavlink_local_position_ned)
+        self.connection.subscribe(mavlink.MAVLink_attitude_message.msgname)(self.on_mavlink_attitude)
 
 if __name__ == "__main__":
     connection = MAVConnection("tcp:127.0.0.1:5762")
