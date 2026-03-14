@@ -2,6 +2,10 @@ from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Button, Select, Label, RichLog, Static, DataTable
 from textual.containers import Horizontal, Vertical, Center
 
+from InvestiGator import MAVConnection
+from pymavlink.dialects.v20 import ardupilotmega as mavlink
+from pymavlink import mavutil
+
 MISSIONS = [("Mission 1", 0), ("Mission 2", 1), ("Mission 3", 2)]
 
 STATUS_TABLE_ROWS = [
@@ -17,7 +21,32 @@ class MissionControl(App):
     Mission Control textual app
     """
 
-    CSS_PATH = "gc.tcss"
+    CSS_PATH = "gc_ui/gc.tcss"
+
+    def __init__(self, connection: MAVConnection):
+        self.connection = connection
+        self.mode_map = mavutil.mode_mapping_bynumber(mavlink.MAV_TYPE_QUADROTOR)
+
+        super().__init__()
+
+    
+    def on_mavlink_heartbeat(self, message: mavlink.MAVLink_heartbeat_message):
+        if message.get_srcSystem() != 1:
+            return
+        self.call_from_thread(self.heartbeat_callback, message)
+
+    def heartbeat_callback(self, message: mavlink.MAVLink_heartbeat_message):
+        armed = bool(message.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
+        armed = "Armed" if armed else "Disarmed"
+
+        mode = None
+        if self.mode_map is not None:
+            mode = self.mode_map.get(message.custom_mode)
+
+        table = self.query_one(DataTable)
+        table.update_cell(row_key="Arm Status", column_key="value", value=armed)
+        table.update_cell(row_key="Flight Mode", column_key="value", value=mode)
+
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
@@ -27,9 +56,9 @@ class MissionControl(App):
             with Vertical(id="left"):
                 with Vertical(id="status_panel", classes="panel") as status_panel:
                     status_panel.border_title = "Drone Status"
-                    with DataTable(show_header=False, id="status_table") as table:
+                    with DataTable(show_header=False, id="status_table", show_cursor=False) as table:
                         table.add_column("Key", key="key")
-                        table.add_column("Value", key="value")
+                        table.add_column("Value", key="value", width=30)
                         for label in STATUS_TABLE_ROWS:
                             table.add_row(label, key=label)
 
@@ -105,8 +134,11 @@ class MissionControl(App):
 
     def on_mount(self):
         self.theme = "nord"
-        self.query_one(DataTable).update_cell(row_key="Arm Status", column_key="value", value="Test")
+        self.connection.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.on_mavlink_heartbeat)
+
 
 if __name__ == "__main__":
-    app = MissionControl()
+    connection = MAVConnection("tcp:127.0.0.1:5762")
+    app = MissionControl(connection)
     app.run()
+    connection.close()
