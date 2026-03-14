@@ -67,41 +67,57 @@ def send_mission_message_wait_ack(connection: MAVConnection, mission_number: int
     """
     Send a mavlink.COMMAND_LONG message to the vehicle to request a mission.
     """
+    return send_command(connection=connection, command=MIL_MISSION_CMD, param1=mission_number, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER)
+
+
+def send_command(connection: MAVConnection, command: int, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=0, retries:int = 3, retry_timeout_s: float=1.0):
+    """
+    Send a mavlink.COMMAND_LONG message and wait for ack from vehicle. Retries up to retries times, each for retry_timeout_s seconds.
+    """
     ack_event = Event()
     ack_result = None
 
     @connection.subscribe(mavlink.MAVLink_command_ack_message.msgname)
     def on_ack(message: mavlink.MAVLink_command_ack_message):
         nonlocal ack_result
-        if message.command == MIL_MISSION_CMD:
+        if message.command == command:
             ack_result = message.result
             ack_event.set()
 
-    for attempt in range(3):
+    for attempt in range(retries):
         ack_event.clear()
         ack_result = None
 
         print(f"Sending mission command, attempt {attempt + 1}")
 
         connection.mav.command_long_send(
-            target_system = 1,
-            target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
-            command = MIL_MISSION_CMD,
+            target_system = target_system,
+            target_component = target_component,
+            command = command,
             confirmation = attempt,
-            param1 = mission_number,
-            param2 = 0,
-            param3 = 0,
-            param4 = 0,
-            param5 = 0,
-            param6 = 0,
-            param7 = 0)
+            param1 = param1,
+            param2 = param2,
+            param3 = param3,
+            param4 = param4,
+            param5 = param5,
+            param6 = param6,
+            param7 = param7)
         
-        if ack_event.wait(timeout=3):
+        if ack_event.wait(timeout=retry_timeout_s):
             connection.sub_manager.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
             return ack_result == mavlink.MAV_RESULT_IN_PROGRESS
     
     connection.sub_manager.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
     return False
+
+def configure_messages(connection: MAVConnection):
+    """
+    Send requests for messages from autopilot to ensure required data is being sent.
+    """
+    send_command(connection=connection, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, param2=10000)
+    send_command(connection=connection, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED, param2=10000)
+    send_command(connection=connection, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_SYS_STATUS, param2=10000)
+    send_command(connection=connection, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_ATTITUDE, param2=10000)
 
 
 MISSION_MENU = build_mission_menu()
