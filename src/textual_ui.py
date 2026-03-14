@@ -124,6 +124,31 @@ class MissionControl(App):
 
         table.update_cell(row_key="NED Target", column_key="value", value=target_ned)
         table.update_cell(row_key="NED Error", column_key="value", value=ned_error)
+    
+
+    def on_mavlink_statustext(self, message: mavlink.MAVLink_statustext_message):
+        if message.get_srcSystem() != 1:
+            return
+        self.call_from_thread(self.statustext_callback, message)
+
+    def statustext_callback(self, message: mavlink.MAVLink_statustext_message):
+        match message.severity:
+            case mavlink.MAV_SEVERITY_EMERGENCY:
+                pass
+            case mavlink.MAV_SEVERITY_ALERT:
+                pass
+            case mavlink.MAV_SEVERITY_CRITICAL:
+                pass
+            case mavlink.MAV_SEVERITY_ERROR:
+                pass
+            case mavlink.MAV_SEVERITY_WARNING:
+                pass
+            case mavlink.MAV_SEVERITY_NOTICE:
+                pass
+            case mavlink.MAV_SEVERITY_INFO:
+                pass
+            case mavlink.MAV_SEVERITY_DEBUG:
+                pass
 
 
     def compose(self) -> ComposeResult:
