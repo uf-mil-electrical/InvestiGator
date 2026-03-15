@@ -76,7 +76,7 @@ class VehicleManager:
         """
         if message.command == MIL_SYSTEM_CMD:
             if message.param1 == 0:
-                # TODO: Send message back to ground control
+                self.mav_connection.mav.statustext_send(severity=mavlink.MAV_SEVERITY_WARNING, text="Pong".encode())
                 print("Ping received from ground control.")
             elif message.param1 == 1:
                 if self.uncontrolled_event.is_set():

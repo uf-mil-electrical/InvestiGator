@@ -195,11 +195,13 @@ class MissionControl(App):
                             yield Button(id="abort_mission_button", label="Abort", variant="error")
                         with Center():
                             yield Button(id="set_guided_button", label="Enable Guided", variant="success")
+                        with Center():
+                            yield Button(id="send_ping_button", label="Send Pi Ping", variant="primary")
 
             
             with Vertical(id="log_panel", classes="panel") as log_panel:
                 log_panel.border_title = "Mission Log"
-                yield RichLog(id="rich_log", wrap=True)
+                yield RichLog(id="rich_log", wrap=True, markup=True)
                 
         yield Footer()
 
@@ -244,6 +246,20 @@ class MissionControl(App):
         elif event.button.id == "recording_button":
             if not self.has_class("recording_enabled"):
                 self.add_class("recording_enabled")
+
+        elif event.button.id == "send_ping_button":
+            connection.mav.command_long_send(
+                    target_system = 1,
+                    target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
+                    command = 31013,
+                    confirmation = 0,
+                    param1 = 0,
+                    param2 = 0,
+                    param3 = 0,
+                    param4 = 0,
+                    param5 = 0,
+                    param6 = 0,
+                    param7 = 0)
 
 
     def on_mount(self):
