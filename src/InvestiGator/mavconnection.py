@@ -1,5 +1,5 @@
 from queue import Queue, ShutDown
-from threading import Thread, Event
+from threading import Thread, Event, Lock
 from typing import cast
 import time
 
@@ -7,6 +7,7 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
 from .pubsub import PublicationManager, SubscriptionManager
+import constants
 
 
 class MAVWriter:
@@ -30,7 +31,7 @@ class MAVConnection:
     Reads from and writes to a MAVLink device.
     """
 
-    def __init__(self, address, baud=112500, source_system=225, source_component=0, timeout_s=30):
+    def __init__(self, address, mav_type, baud=112500, source_system=225, source_component=0, timeout_s=30):
 
         self.mav_connection = cast(mavutil.mavfile, mavutil.mavlink_connection(address, baud, source_system, source_component))
 
@@ -48,6 +49,10 @@ class MAVConnection:
         self.publish_function = self.pub_manager.register_publisher
         self.unpublish = self.pub_manager.remove_publisher
         self.subscribe = self.sub_manager.subscribe
+
+        self.heartbeat_lock = Lock()
+        self.mav_type = mav_type
+        self.system_status = constants.MIL_STATE_CONNECTING
 
         def mav_sender():
             while self.running.is_set():
@@ -75,13 +80,14 @@ class MAVConnection:
 
         @self.publish('HEARTBEAT', 1)
         def publish_heartbeat():
-            self.mav.heartbeat_send(
-                type=mavlink.MAV_TYPE_ONBOARD_CONTROLLER,
-                autopilot=mavlink.MAV_AUTOPILOT_INVALID,
-                base_mode=0,
-                custom_mode=0,
-                system_status=0
-            )
+            with self.heartbeat_lock:
+                self.mav.heartbeat_send(
+                    type=self.mav_type,
+                    autopilot=mavlink.MAV_AUTOPILOT_INVALID,
+                    base_mode=0,
+                    custom_mode=0,
+                    system_status=self.system_status
+                )
 
         print("MAVConnection waiting for first heartbeat")
         self.wait_for_first_heartbeat(timeout_s=timeout_s)
@@ -117,6 +123,16 @@ class MAVConnection:
         Cast self.mav_connection.mav as ardupilotmega MAVLink dialect to allow for type hinting and autocompletion.
         """
         return cast(mavlink.MAVLink, self.mav_connection.mav)
+    
+    @property
+    def system_status(self):
+        with self.heartbeat_lock:
+            return self.system_status
+        
+    @system_status.setter
+    def system_status(self, system_status):
+        with self.heartbeat_lock:
+            self.system_status = system_status
 
     def stop_threads(self):
         if self.send_thread.is_alive():

@@ -274,7 +274,7 @@ class MissionControl(App):
         self.connection.subscribe(mavlink.MAVLink_statustext_message.msgname)(self.on_mavlink_statustext)
 
 if __name__ == "__main__":
-    connection = MAVConnection("tcp:127.0.0.1:5762")
+    connection = MAVConnection("tcp:127.0.0.1:5762", mav_type=mavlink.MAV_TYPE_GCS)
     app = MissionControl(connection)
     app.run()
     connection.close()

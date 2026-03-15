@@ -27,7 +27,7 @@ def initialize() -> MAVConnection:
     baud = config["hardware"].get("ground_control_baud")
 
     print(f"Connecting with address: {address}")
-    connection = MAVConnection(address, source_system=254, baud=baud)
+    connection = MAVConnection(address, mav_type=mavlink.MAV_TYPE_GCS, source_system=254, baud=baud)
 
     return connection
 
