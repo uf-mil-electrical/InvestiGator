@@ -11,7 +11,7 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from .mavconnection import MAVConnection
 from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
 from .camera import Camera, MarkerDetection
-from .constants import MIL_MISSION_CANCEL, MIL_MISSION_ABORT, MIL_SYSTEM_CMD
+from .constants import MIL_SYSTEM_CMD
 
 
 class VehicleManager:
@@ -48,22 +48,9 @@ class VehicleManager:
         self.configure_messages()
         self.wait_for_condition(self.properties_populated)
 
-        self.subscribe(mavlink.MAVLink_command_long_message.msgname)(self.handle_abort_cancel)
         self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.clear_uncontrolled_event)
         self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.check_intended_mode)
         self.subscribe(mavlink.MAVLink_command_long_message.msgname)(self.handle_system_command)
-
-
-    def handle_abort_cancel(self, message: mavlink.MAVLink_command_long_message):
-        """
-        Set uncontrolled and cancel events when the relevant MIL_MISSION command is received.
-        Subscribed to MAVLink_command_long_message.
-        """
-        if message.command == MIL_MISSION_CANCEL:
-            self.cancel_mission_event.set()
-        if message.command == MIL_MISSION_ABORT:
-            self.uncontrolled_event.set()
-            self.cancel_mission_event.set()
 
     
     def handle_system_command(self, message: mavlink.MAVLink_command_long_message):
