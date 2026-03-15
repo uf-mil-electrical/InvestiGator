@@ -1,4 +1,5 @@
 import math
+import time
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Button, Select, Label, RichLog, Static, DataTable
 from textual.containers import Horizontal, Vertical, Center
@@ -46,6 +47,9 @@ class MissionControl(App):
         self.connection = connection
         self.mode_map = mavutil.mode_mapping_bynumber(mavlink.MAV_TYPE_QUADROTOR)
 
+        self.last_companion_heartbeat: float
+        self.last_drone_heartbeat: float
+
         super().__init__()
 
     
@@ -55,16 +59,22 @@ class MissionControl(App):
         self.call_from_thread(self.heartbeat_callback, message)
 
     def heartbeat_callback(self, message: mavlink.MAVLink_heartbeat_message):
-        armed = bool(message.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
-        armed = "Armed" if armed else "Disarmed"
+        if message.get_srcSystem() == 1 and message.get_srcComponent() == 1:
+            self.last_drone_heartbeat = time.monotonic()
 
-        mode = None
-        if self.mode_map is not None:
-            mode = self.mode_map.get(message.custom_mode)
+            armed = bool(message.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
+            armed = "Armed" if armed else "Disarmed"
 
-        table = self.query_one(DataTable)
-        table.update_cell(row_key="Arm Status", column_key="value", value=armed)
-        table.update_cell(row_key="Flight Mode", column_key="value", value=mode)
+            mode = None
+            if self.mode_map is not None:
+                mode = self.mode_map.get(message.custom_mode)
+
+            table = self.query_one(DataTable)
+            table.update_cell(row_key="Arm Status", column_key="value", value=armed)
+            table.update_cell(row_key="Flight Mode", column_key="value", value=mode)
+
+        elif message.get_srcSystem() == 1 and message.get_srcComponent() == mavlink.MAV_TYPE_ONBOARD_CONTROLLER:
+            self.last_companion_heartbeat = time.monotonic()
 
     
     def on_mavlink_sys_status(self, message: mavlink.MAVLink_sys_status_message):
