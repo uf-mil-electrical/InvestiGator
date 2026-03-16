@@ -3,8 +3,10 @@ import time
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Button, Select, Label, RichLog, Static, DataTable
 from textual.containers import Horizontal, Vertical, Center
+from textual.reactive import reactive
 
 from InvestiGator import MAVConnection
+from InvestiGator.constants import MIL_STATE_STANDBY, MIL_STATE_CONNECTING, MIL_STATE_MISSION, MIL_STATE_OVERRIDE, MIL_STATE_INITIAL_OVERRIDE
 import gc_helpers
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from pymavlink import mavutil
@@ -36,6 +38,14 @@ MAV_SEVERITY_TO_COLOR = {
     mavlink.MAV_SEVERITY_DEBUG: "",
 }
 
+MIL_STATE_TO_TEXT = {
+    MIL_STATE_CONNECTING: "[yellow]Connecting to Drone[/yellow]",
+    MIL_STATE_MISSION: "[green]Running Mission[/green]",
+    MIL_STATE_OVERRIDE: "[bold red]OVERRIDE[/bold red]",
+    MIL_STATE_STANDBY: "[green]Standby[/green]",
+    MIL_STATE_INITIAL_OVERRIDE: "[bold yellow]Waiting for initial GUIDED mode[/bold yellow]"
+}
+
 class MissionControl(App):
     """
     Mission Control textual app
@@ -43,12 +53,14 @@ class MissionControl(App):
 
     CSS_PATH = "gc_ui/gc.tcss"
 
+    companion_state = reactive("Unknown")
+
     def __init__(self, connection: MAVConnection):
         self.connection = connection
         self.mode_map = mavutil.mode_mapping_bynumber(mavlink.MAV_TYPE_QUADROTOR)
 
-        self.last_companion_heartbeat: float
-        self.last_drone_heartbeat: float
+        self.last_companion_heartbeat: float = 0.0
+        self.last_drone_heartbeat: float = 0.0
 
         super().__init__()
 
@@ -73,8 +85,9 @@ class MissionControl(App):
             table.update_cell(row_key="Arm Status", column_key="value", value=armed)
             table.update_cell(row_key="Flight Mode", column_key="value", value=mode)
 
-        elif message.get_srcSystem() == 1 and message.get_srcComponent() == mavlink.MAV_TYPE_ONBOARD_CONTROLLER:
+        elif message.get_srcSystem() == 1 and message.get_srcComponent() == mavlink.MAV_COMP_ID_ONBOARD_COMPUTER:
             self.last_companion_heartbeat = time.monotonic()
+            self.companion_state = message.system_status
 
     
     def on_mavlink_sys_status(self, message: mavlink.MAVLink_sys_status_message):
@@ -261,6 +274,13 @@ class MissionControl(App):
                     param6 = 0,
                     param7 = 0)
 
+    def watch_companion_state(self, old_state, new_state):
+        if old_state == new_state:
+            return
+        old_state_text = MIL_STATE_TO_TEXT.get(old_state, "Unknown")
+        new_state_text = MIL_STATE_TO_TEXT.get(new_state, "Unknown")
+        self.query_one(RichLog).write(f"STATE: {old_state_text} -> {new_state_text}")
+        self.query_one(DataTable).update_cell(row_key="State", column_key="value", value=new_state_text)
 
     def on_mount(self):
         self.theme = "nord"
