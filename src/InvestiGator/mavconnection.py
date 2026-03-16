@@ -7,7 +7,7 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
 from .pubsub import PublicationManager, SubscriptionManager
-import constants
+from .constants import MIL_STATE_CONNECTING
 
 
 class MAVWriter:
@@ -52,7 +52,7 @@ class MAVConnection:
 
         self.heartbeat_lock = Lock()
         self.mav_type = mav_type
-        self.system_status = constants.MIL_STATE_CONNECTING
+        self._system_status = MIL_STATE_CONNECTING
 
         def mav_sender():
             while self.running.is_set():
@@ -86,7 +86,7 @@ class MAVConnection:
                     autopilot=mavlink.MAV_AUTOPILOT_INVALID,
                     base_mode=0,
                     custom_mode=0,
-                    system_status=self.system_status
+                    system_status=self._system_status
                 )
 
         print("MAVConnection waiting for first heartbeat")
@@ -127,12 +127,12 @@ class MAVConnection:
     @property
     def system_status(self):
         with self.heartbeat_lock:
-            return self.system_status
+            return self._system_status
         
     @system_status.setter
     def system_status(self, system_status):
         with self.heartbeat_lock:
-            self.system_status = system_status
+            self._system_status = system_status
 
     def stop_threads(self):
         if self.send_thread.is_alive():
