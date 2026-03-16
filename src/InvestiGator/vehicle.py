@@ -11,7 +11,7 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from .mavconnection import MAVConnection
 from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
 from .camera import Camera, MarkerDetection
-from .constants import MIL_SYSTEM_CMD
+from .constants import MIL_SYSTEM_CMD, MIL_STATE_STANDBY, MIL_STATE_OVERRIDE
 
 
 class VehicleManager:
@@ -69,11 +69,13 @@ class VehicleManager:
                 if self.uncontrolled_event.is_set():
                     # Run command in a separate thread to not block subscription manager.
                     print("Received system command: GUIDED. Setting mode to GUIDED.")
+                    self.mav_connection.system_status = MIL_STATE_STANDBY
                     Thread(target=self.set_mode, args=("GUIDED",), daemon=True).start()
             elif message.param1 == 2:
                 print("Received system command: Set uncontrolled.")
                 self.cancel_mission_event.set()
                 self.uncontrolled_event.set()
+                self.mav_connection.system_status = MIL_STATE_OVERRIDE
                 Thread(target=self.set_mode, args=("RTL",), daemon=True).start()
             elif message.param1 == 3:
                 print("Received system command: Cancel mission.")
@@ -577,6 +579,9 @@ class VehicleManager:
         """
         self.cancel_mission_event.clear()
         self.intended_rtl_land = False
+
+        if not self.uncontrolled_event.is_set:
+            self.mav_connection.system_status = MIL_STATE_STANDBY
 
     def close(self):
         #self.mav_connection.close()

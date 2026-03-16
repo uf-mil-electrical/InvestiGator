@@ -1,6 +1,6 @@
 from InvestiGator import MAVConnection
 from InvestiGator import VehicleManager
-from InvestiGator.constants import MIL_MISSION_CMD
+from InvestiGator.constants import MIL_MISSION_CMD, MIL_STATE_MISSION
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 import argparse
 from config import load_config
@@ -70,6 +70,7 @@ def main():
                     command_event.clear()
                     continue
                 
+                connection.system_status = MIL_STATE_MISSION
                 success = MISSIONS[mission_number].function(vehicle)
                 send_mission_complete(connection, mission_number, success=success)
 
