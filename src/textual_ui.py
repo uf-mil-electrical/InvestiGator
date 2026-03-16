@@ -194,7 +194,7 @@ class MissionControl(App):
                         with Center():
                             yield Select(MISSIONS, id="mission_selector", prompt="Select Mission")
                         with Center():
-                            yield Button("Start Mission", variant="primary", id="start_mission_button")
+                            yield Button("Start Mission", variant="primary", id="start_mission_button", disabled=True)
                         with Center():
                             yield Button("Cancel Mission", variant="error", id="cancel_mission_button")
                         with Center():
@@ -224,41 +224,15 @@ class MissionControl(App):
             selector = self.query_one(Select)
             if selector.value == Select.NULL:
                 return
-            self.add_class("mission_started")
-            selector.disabled = True
-            guided_button = self.query_one("#set_guided_button", Button)
-            guided_button.disabled = True
-            guided_button.variant = "primary"
 
         elif event.button.id == "cancel_mission_button":
-            self.remove_class("mission_started")
-            self.query_one(Select).disabled = False
-            guided_button = self.query_one("#set_guided_button", Button)
-            guided_button.disabled = False
-            guided_button.variant = "success"
+            pass
 
         elif event.button.id == "abort_mission_button":
-            if not self.has_class("mission_abort"):
-                self.add_class("mission_abort")
-                self.remove_class("mission_started")
-                self.query_one("#abort_mission_button", Button).disabled = True
-                guided_button = self.query_one("#set_guided_button", Button)
-                guided_button.disabled = False
-                guided_button.variant = "success"
+            pass
 
         elif event.button.id == "set_guided_button":
-            if not self.has_class("guided_mode"):
-                self.add_class("guided_mode")
-            if self.has_class("mission_abort"):
-                self.remove_class("mission_abort")
-                selector = self.query_one(Select)
-                selector.disabled = False
-                selector.clear()
-                self.query_one("#abort_mission_button", Button).disabled = False
-
-        elif event.button.id == "recording_button":
-            if not self.has_class("recording_enabled"):
-                self.add_class("recording_enabled")
+            pass
 
         elif event.button.id == "send_ping_button":
             connection.mav.command_long_send(
@@ -273,6 +247,14 @@ class MissionControl(App):
                     param5 = 0,
                     param6 = 0,
                     param7 = 0)
+            
+    def on_select_changed(self, event: Select.Changed):
+        select = self.query_one(Select)
+        start_mission_button = self.query_one("#start_mission_button")
+        if select.is_blank():
+            start_mission_button.disabled = True
+        else:
+            start_mission_button.disabled = False
 
     def watch_companion_state(self, old_state, new_state):
         if old_state == new_state:
@@ -282,16 +264,32 @@ class MissionControl(App):
         self.query_one(RichLog).write(f"STATE: {old_state_text} -> {new_state_text}")
         self.query_one(DataTable).update_cell(row_key="State", column_key="value", value=new_state_text)
 
-        for css_class in self.classes:
+        for css_class in ["mission_abort", "mission_started"]:
             self.remove_class(css_class)
-        if new_state == MIL_STATE_INITIAL_OVERRIDE or new_state == MIL_STATE_OVERRIDE or new_state == MIL_STATE_CONNECTING:
+
+        if new_state in [MIL_STATE_INITIAL_OVERRIDE, MIL_STATE_OVERRIDE, MIL_STATE_CONNECTING]:
             self.add_class("mission_abort")
-        elif new_state == MIL_STATE_MISSION:
-            self.add_class("mission_start")
+            abort_button = self.query_one("#abort_mission_button", Button)
+            abort_button.disabled = True
+            guided_button = self.query_one("#set_guided_button", Button)
+            guided_button.disabled = False
+            guided_button.variant = "success"
+
+        if new_state in [MIL_STATE_MISSION, MIL_STATE_STANDBY]:
+            guided_button = self.query_one("#set_guided_button", Button)
+            guided_button.disabled = True
+            guided_button.variant = "primary"
+            
+        if new_state == MIL_STATE_MISSION:
+            self.add_class("mission_started")
+            self.query_one(Select).disabled = True
+
         elif new_state == MIL_STATE_STANDBY:
-            pass
-        else:
-            self.add_class("mission_abort")
+            selector = self.query_one(Select)
+            selector.disabled = False
+            selector.clear()
+            abort_button = self.query_one("#abort_mission_button", Button)
+            abort_button.disabled = False
 
 
     def on_mount(self):
