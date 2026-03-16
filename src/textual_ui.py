@@ -282,6 +282,18 @@ class MissionControl(App):
         self.query_one(RichLog).write(f"STATE: {old_state_text} -> {new_state_text}")
         self.query_one(DataTable).update_cell(row_key="State", column_key="value", value=new_state_text)
 
+        for css_class in self.classes:
+            self.remove_class(css_class)
+        if new_state == MIL_STATE_INITIAL_OVERRIDE or new_state == MIL_STATE_OVERRIDE or new_state == MIL_STATE_CONNECTING:
+            self.add_class("mission_abort")
+        elif new_state == MIL_STATE_MISSION:
+            self.add_class("mission_start")
+        elif new_state == MIL_STATE_STANDBY:
+            pass
+        else:
+            self.add_class("mission_abort")
+
+
     def on_mount(self):
         self.theme = "nord"
         gc_helpers.configure_messages(connection)
