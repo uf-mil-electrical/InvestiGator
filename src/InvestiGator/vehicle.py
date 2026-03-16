@@ -91,7 +91,7 @@ class VehicleManager:
         """
         if message.get_srcSystem() != 1:
             return
-        if self.check_mode("GUIDED") and self.uncontrolled_event.is_set() and not self.mav_connection.system_status == MIL_STATE_INITIAL_OVERRIDE:
+        if self.check_mode("GUIDED") and self.uncontrolled_event.is_set():
             print("Uncontrolled event cleared due to mode change to GUIDED.")
             self.uncontrolled_event.clear()
             self.cancel_mission_event.clear()
