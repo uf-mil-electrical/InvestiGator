@@ -268,13 +268,13 @@ class MissionControl(App):
             self.send_mission_command(selection)
 
         elif event.button.id == "cancel_mission_button":
-            pass
+            self.send_command(command=MIL_SYSTEM_CMD, param1=3)
 
         elif event.button.id == "abort_mission_button":
-            pass
+            self.send_command(command=MIL_SYSTEM_CMD, param1=2)
 
         elif event.button.id == "set_guided_button":
-            pass
+            self.send_command(command=MIL_SYSTEM_CMD, param1=1)
 
         elif event.button.id == "send_ping_button":
             self.send_command(command=MIL_SYSTEM_CMD, param1=0)
