@@ -8,7 +8,7 @@ from textual import work
 from textual.worker import Worker
 
 from InvestiGator import MAVConnection
-from InvestiGator.constants import MIL_STATE_STANDBY, MIL_STATE_CONNECTING, MIL_STATE_MISSION, MIL_STATE_OVERRIDE, MIL_STATE_INITIAL_OVERRIDE
+from InvestiGator.constants import MIL_STATE_STANDBY, MIL_STATE_CONNECTING, MIL_STATE_MISSION, MIL_STATE_OVERRIDE, MIL_STATE_INITIAL_OVERRIDE, MIL_SYSTEM_CMD
 import gc_helpers
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from pymavlink import mavutil
@@ -187,6 +187,33 @@ class MissionControl(App):
             richlog.write(f"[blue]Mission {mission_number}: {gc_helpers.MISSIONS[mission_number].name} was acknowledged.[/blue]")
         else:
             richlog.write(f"[red]Mission {mission_number}: {gc_helpers.MISSIONS[mission_number].name} was acknowledged.[/red]")
+
+
+    @work(thread=True)
+    def send_command(self, command, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER):
+        result = gc_helpers.send_command(connection=connection, command=command, param1=param1, param2=param2, param3=param3, param4=param4, param5=param5, param6=param6, param7=param7, target_system=target_system, target_component=target_component)
+        self.call_from_thread(self.command_callback, result, command, param1)
+    
+    def command_callback(self, result, command, param1):
+        richlog = self.query_one(RichLog)
+        system_command = None
+        # TODO: Replace constants with a dictionary
+        if command == MIL_SYSTEM_CMD:
+            match param1:
+                case 0:
+                    system_command = "Pong"
+                case 1:
+                    system_command = "GUIDED"
+                case 2:
+                    system_command = "Uncontrolled"
+                case 3:
+                    system_command = "Cancel Mission"
+
+            if system_command is None:
+                richlog.write(f"Unknown command {"acknowledged" if result else "failed"}: (Command: {command}, param1: {param1}")
+
+            else:
+                richlog.write(f"System command {system_command} {"acknowledged" if result else "failed"}")
 
 
     def compose(self) -> ComposeResult:
