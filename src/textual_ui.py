@@ -11,7 +11,7 @@ import gc_helpers
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from pymavlink import mavutil
 
-MISSIONS = [("Mission 1", 0), ("Mission 2", 1), ("Mission 3", 2)]
+MISSIONS = [(mission[1].name, mission[0]) for mission in enumerate(gc_helpers.MISSIONS)]
 
 STATUS_TABLE_ROWS = [
     "Prearm Status",
