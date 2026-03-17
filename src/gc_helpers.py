@@ -70,7 +70,7 @@ def send_mission_message_wait_ack(connection: MAVConnection, mission_number: int
     return send_command(connection=connection, command=MIL_MISSION_CMD, param1=mission_number, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER)
 
 
-def send_command(connection: MAVConnection, command: int, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=0, retries:int = 3, retry_timeout_s: float=1.0):
+def send_command(connection: MAVConnection, command: int, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER, retries:int = 3, retry_timeout_s: float=1.0):
     """
     Send a mavlink.COMMAND_LONG message and wait for ack from vehicle. Retries up to retries times, each for retry_timeout_s seconds.
     """
