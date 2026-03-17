@@ -105,7 +105,7 @@ def send_command(connection: MAVConnection, command: int, param1=0.0, param2=0.0
         
         if ack_event.wait(timeout=retry_timeout_s):
             connection.sub_manager.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
-            return ack_result == mavlink.MAV_RESULT_IN_PROGRESS
+            return ack_result == mavlink.MAV_RESULT_ACCEPTED
     
     connection.sub_manager.unsubscribe(mavlink.MAVLink_command_ack_message.msgname, on_ack)
     return False

@@ -83,6 +83,10 @@ class VehicleManager:
                 print("Received system command: Cancel mission.")
                 if self.mav_connection.system_status == MIL_STATE_MISSION:
                     self.cancel_mission_event.set()
+            
+            # TODO: Replace this with dictionary
+            if message.param1 in [0, 1, 2, 3]:
+                self.mav.command_ack_send(command=MIL_SYSTEM_CMD, result=mavlink.MAV_RESULT_ACCEPTED)
 
 
     def clear_uncontrolled_event(self, message: mavlink.MAVLink_heartbeat_message):
