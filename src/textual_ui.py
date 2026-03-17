@@ -4,6 +4,8 @@ from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Button, Select, Label, RichLog, Static, DataTable
 from textual.containers import Horizontal, Vertical, Center
 from textual.reactive import reactive
+from textual import work
+from textual.worker import Worker
 
 from InvestiGator import MAVConnection
 from InvestiGator.constants import MIL_STATE_STANDBY, MIL_STATE_CONNECTING, MIL_STATE_MISSION, MIL_STATE_OVERRIDE, MIL_STATE_INITIAL_OVERRIDE
@@ -173,6 +175,19 @@ class MissionControl(App):
         print(formatted_message)
         self.query_one(RichLog).write(formatted_message)
 
+    
+    @work(thread=True)
+    def send_mission_command(self, mission_number):
+        result = gc_helpers.send_mission_message_wait_ack(self.connection, mission_number)
+        self.call_from_thread(self.mission_command_callback, result, mission_number)
+
+    def mission_command_callback(self, result, mission_number):
+        richlog = self.query_one(RichLog)
+        if result:
+            richlog.write(f"[blue]Mission {mission_number}: {gc_helpers.MISSIONS[mission_number].name} was acknowledged.[/blue]")
+        else:
+            richlog.write(f"[red]Mission {mission_number}: {gc_helpers.MISSIONS[mission_number].name} was acknowledged.[/red]")
+
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
@@ -221,9 +236,10 @@ class MissionControl(App):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "start_mission_button":
-            selector = self.query_one(Select)
-            if selector.value == Select.NULL:
+            selection = self.query_one(Select).value
+            if selection == Select.NULL:
                 return
+            self.send_mission_command(selection)
 
         elif event.button.id == "cancel_mission_button":
             pass
