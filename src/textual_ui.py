@@ -5,7 +5,6 @@ from textual.widgets import Header, Footer, Button, Select, Label, RichLog, Stat
 from textual.containers import Horizontal, Vertical, Center
 from textual.reactive import reactive
 from textual import work
-from textual.worker import Worker
 
 from InvestiGator import MAVConnection
 from InvestiGator.constants import MIL_STATE_STANDBY, MIL_STATE_CONNECTING, MIL_STATE_MISSION, MIL_STATE_OVERRIDE, MIL_STATE_INITIAL_OVERRIDE, MIL_SYSTEM_CMD
