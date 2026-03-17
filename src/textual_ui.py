@@ -277,18 +277,7 @@ class MissionControl(App):
             pass
 
         elif event.button.id == "send_ping_button":
-            connection.mav.command_long_send(
-                    target_system = 1,
-                    target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
-                    command = 31013,
-                    confirmation = 0,
-                    param1 = 0,
-                    param2 = 0,
-                    param3 = 0,
-                    param4 = 0,
-                    param5 = 0,
-                    param6 = 0,
-                    param7 = 0)
+            self.send_command(command=MIL_SYSTEM_CMD, param1=0)
             
     def on_select_changed(self, event: Select.Changed):
         select = self.query_one(Select)
