@@ -215,6 +215,11 @@ class MissionControl(App):
                 richlog.write(f"System command {system_command} {"acknowledged" if result else "failed"}")
 
 
+    @work(thread=True)
+    def configure_messages(self):
+        gc_helpers.configure_messages(self.connection)
+
+
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
         yield Header()
@@ -325,7 +330,7 @@ class MissionControl(App):
 
     def on_mount(self):
         self.theme = "nord"
-        gc_helpers.configure_messages(connection)
+        self.configure_messages()
         self.connection.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.on_mavlink_heartbeat)
         self.connection.subscribe(mavlink.MAVLink_sys_status_message.msgname)(self.on_mavlink_sys_status)
         self.connection.subscribe(mavlink.MAVLink_local_position_ned_message.msgname)(self.on_mavlink_local_position_ned)
