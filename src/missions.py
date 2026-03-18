@@ -113,36 +113,49 @@ def square_test(vehicle:VehicleManager):
         return False
 
     print("Vehicle armed")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 10m".encode())
     
     if not vehicle.takeoff(alt_m = 10):
         vehicle.land()
         return False
 
     print("Vehicle at altitude = 10m")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Vehicle at altitude = 10m".encode())
 
     time.sleep(2)
     
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving forward 2m".encode())
     if not vehicle.move_body_frd_position(forward_m=2, right_m=0, timeout_s=10):
         print("Failed to move forward, landing")
         vehicle.land()
         return False
+
+    time.sleep(2)
     
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving right 2m".encode())
     if not vehicle.move_body_frd_position(forward_m=0, right_m=2, timeout_s=10):
         print("Failed to move right, landing")
         vehicle.land()
         return False
     
+    time.sleep(2)
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving back 2m".encode())
     if not vehicle.move_body_frd_position(forward_m=-2, right_m=0, timeout_s=10):
         print("Failed to move backward, landing")
         vehicle.land()
         return False
     
+    time.sleep(2)
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving left 2m".encode())
     if not vehicle.move_body_frd_position(forward_m=0, right_m=-2, timeout_s=10):
         print("Failed to move left, landing")
         vehicle.land()
         return False
     
     print("Movement success! Landing.")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Square success! Landing".encode())
 
     return vehicle.land()
 
