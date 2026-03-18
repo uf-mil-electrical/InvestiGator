@@ -1,13 +1,12 @@
 import math
 import time
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Button, Select, Label, RichLog, Static, DataTable
+from textual.widgets import Header, Footer, Button, Select, RichLog, Static, DataTable
 from textual.containers import Horizontal, Vertical, Center
 from textual.reactive import reactive
 from textual import work
 
-from InvestiGator import MAVConnection
-from InvestiGator.constants import MIL_STATE_STANDBY, MIL_STATE_CONNECTING, MIL_STATE_MISSION, MIL_STATE_OVERRIDE, MIL_STATE_INITIAL_OVERRIDE, MIL_SYSTEM_CMD
+from InvestiGator import MAVConnection, constants
 import gc_helpers
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from pymavlink import mavutil
@@ -40,11 +39,11 @@ MAV_SEVERITY_TO_COLOR = {
 }
 
 MIL_STATE_TO_TEXT = {
-    MIL_STATE_CONNECTING: "[yellow]Connecting to Drone[/yellow]",
-    MIL_STATE_MISSION: "[green]Running Mission[/green]",
-    MIL_STATE_OVERRIDE: "[bold red]OVERRIDE[/bold red]",
-    MIL_STATE_STANDBY: "[green]Standby[/green]",
-    MIL_STATE_INITIAL_OVERRIDE: "[bold yellow]Waiting for initial GUIDED mode[/bold yellow]"
+    constants.MIL_STATE_CONNECTING: "[yellow]Connecting to Drone[/yellow]",
+    constants.MIL_STATE_MISSION: "[green]Running Mission[/green]",
+    constants.MIL_STATE_OVERRIDE: "[bold red]OVERRIDE[/bold red]",
+    constants.MIL_STATE_STANDBY: "[green]Standby[/green]",
+    constants.MIL_STATE_INITIAL_OVERRIDE: "[bold yellow]Waiting for initial GUIDED mode[/bold yellow]"
 }
 
 class MissionControl(App):
@@ -197,15 +196,15 @@ class MissionControl(App):
         richlog = self.query_one(RichLog)
         system_command = None
         # TODO: Replace constants with a dictionary
-        if command == MIL_SYSTEM_CMD:
+        if command == constants.MIL_SYSTEM_CMD:
             match param1:
-                case 0:
+                case constants.MIL_SYSTEM_PING:
                     system_command = "Pong"
-                case 1:
+                case constants.MIL_SYSTEM_GUIDED:
                     system_command = "GUIDED"
-                case 2:
+                case constants.MIL_SYSTEM_OVERRIDE:
                     system_command = "Uncontrolled"
-                case 3:
+                case constants.MIL_SYSTEM_CANCEL:
                     system_command = "Cancel Mission"
 
             if system_command is None:
@@ -273,16 +272,16 @@ class MissionControl(App):
             self.send_mission_command(selection)
 
         elif event.button.id == "cancel_mission_button":
-            self.send_command(command=MIL_SYSTEM_CMD, param1=3)
+            self.send_command(command=constants.MIL_SYSTEM_CMD, param1=3)
 
         elif event.button.id == "abort_mission_button":
-            self.send_command(command=MIL_SYSTEM_CMD, param1=2)
+            self.send_command(command=constants.MIL_SYSTEM_CMD, param1=2)
 
         elif event.button.id == "set_guided_button":
-            self.send_command(command=MIL_SYSTEM_CMD, param1=1)
+            self.send_command(command=constants.MIL_SYSTEM_CMD, param1=1)
 
         elif event.button.id == "send_ping_button":
-            self.send_command(command=MIL_SYSTEM_CMD, param1=0)
+            self.send_command(command=constants.MIL_SYSTEM_CMD, param1=0)
             
     def on_select_changed(self, event: Select.Changed):
         select = self.query_one(Select)
@@ -303,7 +302,7 @@ class MissionControl(App):
         for css_class in ["mission_abort", "mission_started"]:
             self.remove_class(css_class)
 
-        if new_state in [MIL_STATE_INITIAL_OVERRIDE, MIL_STATE_OVERRIDE, MIL_STATE_CONNECTING]:
+        if new_state in [constants.MIL_STATE_INITIAL_OVERRIDE, constants.MIL_STATE_OVERRIDE, constants.MIL_STATE_CONNECTING]:
             self.add_class("mission_abort")
             abort_button = self.query_one("#abort_mission_button", Button)
             abort_button.disabled = True
@@ -311,16 +310,16 @@ class MissionControl(App):
             guided_button.disabled = False
             guided_button.variant = "success"
 
-        if new_state in [MIL_STATE_MISSION, MIL_STATE_STANDBY]:
+        if new_state in [constants.MIL_STATE_MISSION, constants.MIL_STATE_STANDBY]:
             guided_button = self.query_one("#set_guided_button", Button)
             guided_button.disabled = True
             guided_button.variant = "primary"
             
-        if new_state == MIL_STATE_MISSION:
+        if new_state == constants.MIL_STATE_MISSION:
             self.add_class("mission_started")
             self.query_one(Select).disabled = True
 
-        elif new_state == MIL_STATE_STANDBY:
+        elif new_state == constants.MIL_STATE_STANDBY:
             selector = self.query_one(Select)
             selector.disabled = False
             selector.clear()
