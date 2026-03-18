@@ -125,11 +125,11 @@ def configure_messages(connection: MAVConnection):
     ten_hz_us = (1/10) * 1E6
     five_hz_us = (1/5) * 1E6
 
-    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, param2=five_hz_us)
-    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED, param2=five_hz_us)
-    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_SYS_STATUS, param2=five_hz_us)
-    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_ATTITUDE, param2=five_hz_us)
-    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_POSITION_TARGET_LOCAL_NED, param2=five_hz_us)
+    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, target_component=0, param1=mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, param2=five_hz_us)
+    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, target_component=0, param1=mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED, param2=five_hz_us)
+    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, target_component=0, param1=mavlink.MAVLINK_MSG_ID_SYS_STATUS, param2=five_hz_us)
+    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, target_component=0, param1=mavlink.MAVLINK_MSG_ID_ATTITUDE, param2=five_hz_us)
+    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, target_component=0, param1=mavlink.MAVLINK_MSG_ID_POSITION_TARGET_LOCAL_NED, param2=five_hz_us)
 
 
 MISSION_MENU = build_mission_menu()
