@@ -194,7 +194,7 @@ class MissionControl(App):
 
     def mission_command_callback(self, result, mission_number):
         message = f"Mission {mission_number}: {gc_helpers.MISSIONS[mission_number].name} was {"acknowledged" if result == mavlink.MAV_RESULT_ACCEPTED else "not acknowledged"}."
-        color = "" if result == mavlink.MAV_RESULT_ACCEPTED else "red"
+        color = "blue" if result == mavlink.MAV_RESULT_ACCEPTED else "red"
         self.log_(message, color)
 
 
