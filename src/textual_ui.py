@@ -191,12 +191,18 @@ class MissionControl(App):
     def send_mission_command(self, mission_number):
         result = gc_helpers.send_mission_message_wait_ack(self.connection, mission_number)
         self.call_from_thread(self.mission_command_callback, result, mission_number)
+        result = gc_helpers.wait_for_mission_complete(self.connection, mission_number)
+        self.call_from_thread(self.mission_complete_callback, result, mission_number)
 
     def mission_command_callback(self, result, mission_number):
-        message = f"Mission {mission_number}: {gc_helpers.MISSIONS[mission_number].name} was {"acknowledged" if result == mavlink.MAV_RESULT_ACCEPTED else "not acknowledged"}."
-        color = "blue" if result == mavlink.MAV_RESULT_ACCEPTED else "red"
+        message = f"Mission {mission_number}: {gc_helpers.MISSIONS[mission_number].name} was {"acknowledged" if result else "not acknowledged"}."
+        color = "blue" if result else "red"
+        self.log_(message, color)        
+    
+    def mission_complete_callback(self, result, mission_number):
+        message = f"Mission {mission_number}: {gc_helpers.MISSIONS[mission_number].name} completed {"successfully" if result else "unsuccessfully"}"
+        color = "blue" if result else "red"
         self.log_(message, color)
-
 
     @work(thread=True)
     def send_command(self, command, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER):
