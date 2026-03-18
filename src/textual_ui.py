@@ -235,6 +235,16 @@ class MissionControl(App):
         gc_helpers.configure_messages(self.connection)
 
 
+    def log_(self, message, color="", gc_src=False):
+        # TODO: Add timestamp and python logger
+        if gc_src:
+            message = "GC: " + message
+        rich_message = message
+        if color:
+            rich_message = "[{color}]{message}[/{color}]"
+
+        self.query_one(RichLog).write(rich_message)
+
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
         yield Header()
