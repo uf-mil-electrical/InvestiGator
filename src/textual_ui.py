@@ -36,7 +36,7 @@ MAV_SEVERITY_TO_COLOR = {
     mavlink.MAV_SEVERITY_ERROR: "",
     mavlink.MAV_SEVERITY_WARNING: "yellow",
     mavlink.MAV_SEVERITY_NOTICE: "",
-    mavlink.MAV_SEVERITY_INFO: "green",
+    mavlink.MAV_SEVERITY_INFO: "",
     mavlink.MAV_SEVERITY_DEBUG: "",
 }
 
@@ -77,7 +77,7 @@ class MissionControl(App):
             self.last_drone_heartbeat = time.monotonic()
 
             armed = bool(message.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
-            armed = "Armed" if armed else "Disarmed"
+            armed = "[green]Armed[green]" if armed else "[red]Disarmed[/red]"
 
             mode = None
             if self.mode_map is not None:
@@ -99,7 +99,7 @@ class MissionControl(App):
 
     def sys_status_callback(self, message: mavlink.MAVLink_sys_status_message):
         prearmed = bool(message.onboard_control_sensors_health & mavlink.MAV_SYS_STATUS_PREARM_CHECK)
-        prearmed = "Prearmed" if prearmed else "Prearm Failing"
+        prearmed = "[green]Prearmed[/green]" if prearmed else "[red]Prearm Failing[/red]"
 
         voltage = message.voltage_battery / 1E3 # Given in mV
         current = message.current_battery / 1E2 # Given in cA
