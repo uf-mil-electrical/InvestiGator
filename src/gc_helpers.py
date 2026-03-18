@@ -1,6 +1,5 @@
 from missions import MISSIONS
-from InvestiGator import MAVConnection
-from InvestiGator.constants import MIL_SYSTEM_CMD, MIL_MISSION_CMD
+from InvestiGator import MAVConnection, constants
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from threading import Event
 
@@ -32,7 +31,7 @@ def wait_for_mission_complete(connection: MAVConnection, mission_number: int):
     @connection.subscribe(mavlink.MAVLink_command_ack_message.msgname)
     def on_ack(message: mavlink.MAVLink_command_ack_message):
         nonlocal ack_result, ack_mission_int
-        if message.command == MIL_MISSION_CMD:
+        if message.command == constants.MIL_MISSION_CMD:
             ack_result = message.result
             ack_mission_int = message.result_param2
             ack_event.set()
@@ -67,7 +66,7 @@ def send_mission_message_wait_ack(connection: MAVConnection, mission_number: int
     """
     Send a mavlink.COMMAND_LONG message to the vehicle to request a mission.
     """
-    return send_command(connection=connection, command=MIL_MISSION_CMD, param1=mission_number, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER)
+    return send_command(connection=connection, command=constants.MIL_MISSION_CMD, param1=mission_number, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER)
 
 
 def send_command(connection: MAVConnection, command: int, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER, retries:int = 3, retry_timeout_s: float=1.0):
@@ -88,7 +87,15 @@ def send_command(connection: MAVConnection, command: int, param1=0.0, param2=0.0
         ack_event.clear()
         ack_result = None
 
-        print(f"Sending mission command, attempt {attempt + 1}")
+        match command:
+            case constants.MIL_SYSTEM_CMD:
+                command_string = constants.MIL_SYSTEM_CMDS[int(param1)]
+            case constants.MIL_MISSION_CMD:
+                command_string = MISSIONS[int(param1)].name
+            case _:
+                command_string = mavlink.enums["MAV_CMD"][command].name
+        
+        print(f"Sending command: {command_string}. Attempt: {attempt + 1}")
 
         connection.mav.command_long_send(
             target_system = target_system,
