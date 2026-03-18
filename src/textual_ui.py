@@ -182,13 +182,9 @@ class MissionControl(App):
         if message.get_srcSystem() == 1 and message.get_srcComponent() == mavlink.MAV_COMP_ID_ONBOARD_COMPUTER:
             prefix = "PI: "
 
-        if color: 
-            formatted_message = f"{prefix}[{color}]{message.text}[/{color}]"
-        else:
-            formatted_message = f"{prefix}{message.text}"
-            
+        formatted_message = prefix + message.text
+        self.log_(formatted_message, color=color, gc_src=False)
         print(formatted_message)
-        self.query_one(RichLog).write(formatted_message)
 
     
     @work(thread=True)
@@ -197,11 +193,9 @@ class MissionControl(App):
         self.call_from_thread(self.mission_command_callback, result, mission_number)
 
     def mission_command_callback(self, result, mission_number):
-        richlog = self.query_one(RichLog)
-        if result:
-            richlog.write(f"[blue]Mission {mission_number}: {gc_helpers.MISSIONS[mission_number].name} was acknowledged.[/blue]")
-        else:
-            richlog.write(f"[red]Mission {mission_number}: {gc_helpers.MISSIONS[mission_number].name} was acknowledged.[/red]")
+        message = f"Mission {mission_number}: {gc_helpers.MISSIONS[mission_number].name} was {"acknowledged" if result == mavlink.MAV_RESULT_ACCEPTED else "not acknowledged"}."
+        color = "" if result == mavlink.MAV_RESULT_ACCEPTED else "red"
+        self.log_(message, color)
 
 
     @work(thread=True)
@@ -210,7 +204,6 @@ class MissionControl(App):
         self.call_from_thread(self.command_callback, result, command, param1)
     
     def command_callback(self, result, command, param1):
-        richlog = self.query_one(RichLog)
         system_command = None
         if command == constants.MIL_SYSTEM_CMD:
             match param1:
@@ -224,10 +217,12 @@ class MissionControl(App):
                     system_command = "Cancel Mission"
 
             if system_command is None:
-                richlog.write(f"Unknown command {"acknowledged" if result else "failed"}: (Command: {command}, param1: {param1}")
+                message = f"Unknown command {"acknowledged" if result else "failed"}: (Command: {command}, param1: {param1}"
+                self.log_(message)
 
             else:
-                richlog.write(f"System command {system_command} {"acknowledged" if result else "failed"}")
+                message = f"System command {system_command} {"acknowledged" if result else "failed"}"
+                self.log_(message)
 
 
     @work(thread=True)
@@ -235,13 +230,14 @@ class MissionControl(App):
         gc_helpers.configure_messages(self.connection)
 
 
-    def log_(self, message, color="", gc_src=False):
+    def log_(self, message, color="", gc_src=True):
         # TODO: Add timestamp and python logger
         if gc_src:
             message = "GC: " + message
         rich_message = message
         if color:
-            rich_message = "[{color}]{message}[/{color}]"
+            print(color)
+            rich_message = f"[{color}]{message}[/{color}]"
 
         self.query_one(RichLog).write(rich_message)
 
@@ -322,7 +318,8 @@ class MissionControl(App):
             return
         old_state_text = MIL_STATE_TO_TEXT.get(old_state, "Unknown")
         new_state_text = MIL_STATE_TO_TEXT.get(new_state, "Unknown")
-        self.query_one(RichLog).write(f"STATE: {old_state_text} -> {new_state_text}")
+        message = f"STATE: {old_state_text} -> {new_state_text}"
+        self.log_(message)
         self.query_one(DataTable).update_cell(row_key="State", column_key="value", value=new_state_text)
 
         for css_class in ["mission_abort", "mission_started"]:
