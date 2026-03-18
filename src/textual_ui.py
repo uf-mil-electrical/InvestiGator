@@ -154,7 +154,7 @@ class MissionControl(App):
         table = self.query_one(DataTable)
         current_ned_str = table.get_cell(row_key="NED Location", column_key="value")
         current_ned_str = current_ned_str.split('|')
-        ned_error = f"{message.x - float(current_ned_str[0])} | {message.y - float(current_ned_str[1])} | {message.z - float(current_ned_str[2])}"
+        ned_error = f"{message.x - float(current_ned_str[0]):.2f} | {message.y - float(current_ned_str[1]):.2f} | {message.z - float(current_ned_str[2]):.2f}"
 
         table.update_cell(row_key="NED Target", column_key="value", value=target_ned)
         table.update_cell(row_key="NED Error", column_key="value", value=ned_error)
