@@ -24,7 +24,9 @@ STATUS_TABLE_ROWS = [
     "NED Velocity",
     "Relative Altitude",
     "Attitude Degrees",
-    "Heading"
+    "Heading",
+    "Battery Voltage",
+    "Battery Current"
 ]
 
 MAV_SEVERITY_TO_COLOR = {
@@ -99,8 +101,16 @@ class MissionControl(App):
         prearmed = bool(message.onboard_control_sensors_health & mavlink.MAV_SYS_STATUS_PREARM_CHECK)
         prearmed = "Prearmed" if prearmed else "Prearm Failing"
 
+        voltage = message.voltage_battery / 1E3 # Given in mV
+        current = message.current_battery / 1E2 # Given in cA
+
+        voltage_string = f"{voltage} V"
+        current_string = f"{current} A"
+
         table = self.query_one(DataTable)
         table.update_cell(row_key="Prearm Status", column_key="value", value=prearmed)
+        table.update_cell(row_key="Battery Voltage", column_key="value", value=voltage_string)
+        table.update_cell(row_key="Battery Current", column_key="value", value=current_string)
 
 
     def on_mavlink_local_position_ned(self, message: mavlink.MAVLink_local_position_ned_message):
