@@ -175,10 +175,17 @@ class MissionControl(App):
 
     def statustext_callback(self, message: mavlink.MAVLink_statustext_message):
         color = MAV_SEVERITY_TO_COLOR.get(message.severity, "")
+
+        prefix = "Unkown"
+        if message.get_srcSystem() == 1 and message.get_srcComponent() == 1:
+            prefix = "FC: "
+        if message.get_srcSystem() == 1 and message.get_srcComponent() == mavlink.MAV_COMP_ID_ONBOARD_COMPUTER:
+            prefix = "PI: "
+
         if color: 
-            formatted_message = f"{message.get_srcSystem()}:{message.get_srcComponent()}:[{color}]{message.text}[/{color}]"
+            formatted_message = f"{prefix}[{color}]{message.text}[/{color}]"
         else:
-            formatted_message = f"{message.get_srcSystem()}:{message.get_srcComponent()}:{message.text}"
+            formatted_message = f"{prefix}{message.text}"
             
         print(formatted_message)
         self.query_one(RichLog).write(formatted_message)
