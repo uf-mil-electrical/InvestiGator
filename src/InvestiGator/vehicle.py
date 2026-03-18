@@ -63,28 +63,29 @@ class VehicleManager:
         param1 = 3: Set cancel mission
         """
         if message.command == constants.MIL_SYSTEM_CMD:
-            if message.param1 == constants.MIL_SYSTEM_PING:
-                self.mav_connection.mav.statustext_send(severity=mavlink.MAV_SEVERITY_WARNING, text="Pong".encode())
-                print("Ping received from ground control.")
+            match message.param1:
+                case constants.MIL_SYSTEM_PING:
+                    self.mav_connection.mav.statustext_send(severity=mavlink.MAV_SEVERITY_WARNING, text="Pong".encode())
+                    print("Ping received from ground control.")
 
-            elif message.param1 == constants.MIL_SYSTEM_GUIDED:
-                if self.uncontrolled_event.is_set():
-                    # Run command in a separate thread to not block subscription manager.
-                    print("Received system command: GUIDED. Setting mode to GUIDED.")
-                    Thread(target=self.set_mode, args=("GUIDED",), daemon=True).start()
+                case constants.MIL_SYSTEM_GUIDED:
+                    if self.uncontrolled_event.is_set():
+                        # Run command in a separate thread to not block subscription manager.
+                        print("Received system command: GUIDED. Setting mode to GUIDED.")
+                        Thread(target=self.set_mode, args=("GUIDED",), daemon=True).start()
 
-            elif message.param1 == constants.MIL_SYSTEM_OVERRIDE:
-                print("Received system command: Set uncontrolled.")
-                if self.mav_connection.system_status == constants.MIL_STATE_MISSION:
-                    self.cancel_mission_event.set()
-                self.uncontrolled_event.set()
-                self.mav_connection.system_status = constants.MIL_STATE_OVERRIDE
-                Thread(target=self.set_mode, args=("RTL",), daemon=True).start()
+                case constants.MIL_SYSTEM_OVERRIDE:
+                    print("Received system command: Set uncontrolled.")
+                    if self.mav_connection.system_status == constants.MIL_STATE_MISSION:
+                        self.cancel_mission_event.set()
+                    self.uncontrolled_event.set()
+                    self.mav_connection.system_status = constants.MIL_STATE_OVERRIDE
+                    Thread(target=self.set_mode, args=("RTL",), daemon=True).start()
 
-            elif message.param1 == constants.MIL_SYSTEM_CANCEL:
-                print("Received system command: Cancel mission.")
-                if self.mav_connection.system_status == constants.MIL_STATE_MISSION:
-                    self.cancel_mission_event.set()
+                case constants.MIL_SYSTEM_CANCEL:
+                    print("Received system command: Cancel mission.")
+                    if self.mav_connection.system_status == constants.MIL_STATE_MISSION:
+                        self.cancel_mission_event.set()
             
             if message.param1 in constants.MIL_SYSTEM_CMDS:
                 self.mav.command_ack_send(command=constants.MIL_SYSTEM_CMD, result=mavlink.MAV_RESULT_ACCEPTED)
