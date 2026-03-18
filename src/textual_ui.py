@@ -195,7 +195,6 @@ class MissionControl(App):
     def command_callback(self, result, command, param1):
         richlog = self.query_one(RichLog)
         system_command = None
-        # TODO: Replace constants with a dictionary
         if command == constants.MIL_SYSTEM_CMD:
             match param1:
                 case constants.MIL_SYSTEM_PING:
