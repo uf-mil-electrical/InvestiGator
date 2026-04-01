@@ -5,7 +5,6 @@ import argparse
 from InvestiGator.constants import MIL_SYSTEM_CMD
 import time
 from gc_helpers import valid_mission, wait_for_mission_complete, send_mission_message_wait_ack, MISSIONS, MISSION_MENU
-from textual.app import App
 from textual_ui import MissionControl
 
 
