@@ -4,7 +4,7 @@ from config import load_config
 import argparse
 from InvestiGator.constants import MIL_SYSTEM_CMD
 import time
-from gc_helpers import valid_mission, wait_for_mission_complete, send_mission_message_wait_ack, MISSIONS, MISSION_MENU
+from gc_helpers import valid_mission, wait_for_mission_complete, send_mission_message_wait_ack, MISSIONS, MISSION_MENU, send_system_command
 from textual_ui import MissionControl
 
 
@@ -58,34 +58,8 @@ def run_cli(connection: MAVConnection):
         print(MISSION_MENU)
         mission_number = input("Enter selection: ")
 
-        if mission_number == "p" or mission_number == "g":
-            connection.mav.command_long_send(
-                target_system = 1,
-                target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
-                command = MIL_SYSTEM_CMD,
-                confirmation = 0,
-                param1 = 0 if mission_number == "p" else 1,
-                param2 = 0,
-                param3 = 0,
-                param4 = 0,
-                param5 = 0,
-                param6 = 0,
-                param7 = 0)
-            continue
-
-        if mission_number == "u" or mission_number == "c":
-            connection.mav.command_long_send(
-                target_system = 1,
-                target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
-                command = MIL_SYSTEM_CMD,
-                confirmation = 0,
-                param1 = 2 if mission_number == "u" else 3,
-                param2 = 0,
-                param3 = 0,
-                param4 = 0,
-                param5 = 0,
-                param6 = 0,
-                param7 = 0)
+        if mission_number in ("p", "g", "u", "c"):
+            send_system_command(connection, mission_number)
             continue
 
         if not valid_mission(mission_number):

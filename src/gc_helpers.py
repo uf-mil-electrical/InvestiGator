@@ -8,16 +8,29 @@ def build_mission_menu() -> str:
     """
     Return a string menu of available missions.
     """
-    menu = "--- Select Mission ---\n"
+    menu = "\n--- Select Mission ---\n"
     for i, mission in enumerate(MISSIONS):
         menu += f"{i}) {mission.name}\n"
-    menu += "--- System Commands ---\n"
+    menu += "\n--- System Commands ---\n"
     menu += "p) Ping Companion Computer\n"
     menu += "g) Set mode to GUIDED\n"
     menu += "u) Set uncontrolled (for testing abort)\n"
     menu += "c) Cancel mission (for testing cancel)\n"
     return menu
 
+
+def send_system_command(connection: MAVConnection, command):
+    """
+    Map string input for system command to correct value and send to connection.
+    """
+    match command:
+        case "p": command = constants.MIL_SYSTEM_PING
+        case "g": command = constants.MIL_SYSTEM_GUIDED
+        case "u": command = constants.MIL_SYSTEM_OVERRIDE
+        case "c": command = constants.MIL_SYSTEM_CANCEL
+    
+    success = send_command(connection=connection, command=constants.MIL_SYSTEM_CMD, param1=command, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER)
+    print(f"System command: {constants.MIL_SYSTEM_CMDS[command]} {"acknowledged" if success else "not acknowledged"}.")
 
 def wait_for_mission_complete(connection: MAVConnection, mission_number: int):
     """
