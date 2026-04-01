@@ -32,61 +32,68 @@ def initialize() -> MAVConnection:
     return connection
 
 
+def run_cli(connection: MAVConnection):
+    """
+    Run CLI prompt for running missions and communicating with InvestiGator UAV.
+    """
+    while True:
+        print(MISSION_MENU)
+        mission_number = input("Enter selection: ")
+
+        if mission_number == "p" or mission_number == "g":
+            connection.mav.command_long_send(
+                target_system = 1,
+                target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
+                command = MIL_SYSTEM_CMD,
+                confirmation = 0,
+                param1 = 0 if mission_number == "p" else 1,
+                param2 = 0,
+                param3 = 0,
+                param4 = 0,
+                param5 = 0,
+                param6 = 0,
+                param7 = 0)
+            continue
+
+        if mission_number == "u" or mission_number == "c":
+            connection.mav.command_long_send(
+                target_system = 1,
+                target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
+                command = MIL_SYSTEM_CMD,
+                confirmation = 0,
+                param1 = 2 if mission_number == "u" else 3,
+                param2 = 0,
+                param3 = 0,
+                param4 = 0,
+                param5 = 0,
+                param6 = 0,
+                param7 = 0)
+            continue
+
+        if not valid_mission(mission_number):
+            continue
+
+        mission_number = int(mission_number)
+        start_s = time.monotonic()
+
+        if not send_mission_message_wait_ack(connection, mission_number):
+            print("Mission failed to be acknowledged.")
+            continue
+
+        if not wait_for_mission_complete(connection, mission_number):
+            print("Mission failed to complete.")
+            continue
+
+        print(f"Mission {mission_number}: {MISSIONS[mission_number].name} completed successfully in {time.monotonic()- start_s:.2f} seconds.\n")
+    
+
+
 def main():
 
     connection = initialize()
-    print("Connection made!\n")
 
     try:
-        while True:
-            print(MISSION_MENU)
-            mission_number = input("Enter selection: ")
-            
-            if mission_number == "p" or mission_number == "g":
-                connection.mav.command_long_send(
-                    target_system = 1,
-                    target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
-                    command = MIL_SYSTEM_CMD,
-                    confirmation = 0,
-                    param1 = 0 if mission_number == "p" else 1,
-                    param2 = 0,
-                    param3 = 0,
-                    param4 = 0,
-                    param5 = 0,
-                    param6 = 0,
-                    param7 = 0)
-                continue
-
-            if mission_number == "u" or mission_number == "c":
-                connection.mav.command_long_send(
-                    target_system = 1,
-                    target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
-                    command = MIL_SYSTEM_CMD,
-                    confirmation = 0,
-                    param1 = 2 if mission_number == "u" else 3,
-                    param2 = 0,
-                    param3 = 0,
-                    param4 = 0,
-                    param5 = 0,
-                    param6 = 0,
-                    param7 = 0)
-                continue
-
-            if not valid_mission(mission_number):
-                continue
-
-            mission_number = int(mission_number)
-            start_s = time.monotonic()
-
-            if not send_mission_message_wait_ack(connection, mission_number):
-                print("Mission failed to be acknowledged.")
-                continue
-
-            if not wait_for_mission_complete(connection, mission_number):
-                print("Mission failed to complete.")
-                continue
-
-            print(f"Mission {mission_number}: {MISSIONS[mission_number].name} completed successfully in {time.monotonic()- start_s:.2f} seconds.\n")
+        run_cli(connection)
 
     finally:
         connection.close()    
