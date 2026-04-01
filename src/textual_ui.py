@@ -77,7 +77,7 @@ class MissionControl(App):
             self.last_drone_heartbeat = time.monotonic()
 
             armed = bool(message.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
-            armed = "[green]Armed[green]" if armed else "[red]Disarmed[/red]"
+            armed = "[green]Armed[/green]" if armed else "[red]Disarmed[/red]"
 
             mode = None
             if self.mode_map is not None:
