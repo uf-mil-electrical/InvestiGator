@@ -7,17 +7,25 @@ import time
 from gc_helpers import valid_mission, wait_for_mission_complete, send_mission_message_wait_ack, MISSIONS, MISSION_MENU
 
 
-def initialize() -> MAVConnection:
+def parse_args():
     """
-    Get MAVLink connection. By default, connection is made to hardware RFD900x radio modem. Simulation can be selected with -s/--sim flag. 
+    Get arguments from argparse.
+    Simulation can be selected with -s/--sim flag.
+    No_GUI mode can be selected with --no_gui flag.
+    """
+    parser = argparse.ArgumentParser(description="Ground Control script for InvestiGator UAV. Default connection is to RFD900x radio modem. Use -s/--sim to connect to SITL. Connection strings are defined in config.toml.")
+    
+    parser.add_argument("-s", "--sim", action="store_true", help="Use simulation connection string from config.toml")
+    parser.add_argument("--no_gui", action="store_true", help="Run in CLI mode.")
+    
+    return parser.parse_args()
+
+def create_connection(args) -> MAVConnection:
+    """
+    Get MAVLink connection. By default, connection is made to hardware RFD900x radio modem.  
     Strings for connection are stored in InvestiGator/config.toml.
     """
-
     config: dict = load_config()
-
-    parser = argparse.ArgumentParser(description="Ground Control script for InvestiGator UAV. Default connection is to RFD900x radio modem. Use -s/--sim to connect to SITL. Connection strings are defined in config.toml.")
-    parser.add_argument("-s", "--sim", action="store_true", help="Use simulation connection string from config.toml")
-    args = parser.parse_args()
 
     if args.sim:
         address = config["simulation"].get("ground_control")
@@ -87,10 +95,10 @@ def run_cli(connection: MAVConnection):
         print(f"Mission {mission_number}: {MISSIONS[mission_number].name} completed successfully in {time.monotonic()- start_s:.2f} seconds.\n")
     
 
-
 def main():
 
-    connection = initialize()
+    args = parse_args()
+    connection = create_connection(args)
 
     try:
         run_cli(connection)
