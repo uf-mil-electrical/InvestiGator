@@ -5,6 +5,8 @@ import argparse
 from InvestiGator.constants import MIL_SYSTEM_CMD
 import time
 from gc_helpers import valid_mission, wait_for_mission_complete, send_mission_message_wait_ack, MISSIONS, MISSION_MENU
+from textual.app import App
+from textual_ui import MissionControl
 
 
 def parse_args():
@@ -19,6 +21,7 @@ def parse_args():
     parser.add_argument("--no_gui", action="store_true", help="Run in CLI mode.")
     
     return parser.parse_args()
+
 
 def create_connection(args) -> MAVConnection:
     """
@@ -38,6 +41,14 @@ def create_connection(args) -> MAVConnection:
     connection = MAVConnection(address, mav_type=mavlink.MAV_TYPE_GCS, source_system=254, baud=baud)
 
     return connection
+
+
+def run_gui(connection: MAVConnection):
+    """
+    Run Textual GUI.
+    """
+    app = MissionControl(connection)
+    app.run()
 
 
 def run_cli(connection: MAVConnection):
@@ -101,7 +112,10 @@ def main():
     connection = create_connection(args)
 
     try:
-        run_cli(connection)
+        if args.no_gui:
+            run_cli(connection)
+        else:
+            run_gui(connection)
 
     finally:
         connection.close()    
