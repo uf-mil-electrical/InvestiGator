@@ -206,7 +206,7 @@ class MissionControl(App):
 
     @work(thread=True)
     def send_command(self, command, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER):
-        result = gc_helpers.send_command(connection=connection, command=command, param1=param1, param2=param2, param3=param3, param4=param4, param5=param5, param6=param6, param7=param7, target_system=target_system, target_component=target_component)
+        result = gc_helpers.send_command(connection=self.connection, command=command, param1=param1, param2=param2, param3=param3, param4=param4, param5=param5, param6=param6, param7=param7, target_system=target_system, target_component=target_component)
         self.call_from_thread(self.command_callback, result, command, param1)
     
     def command_callback(self, result, command, param1):
