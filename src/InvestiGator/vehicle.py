@@ -88,6 +88,7 @@ class VehicleManager:
                         self.cancel_mission_event.set()
             
             if message.param1 in constants.MIL_SYSTEM_CMDS:
+                print("Sending command ack")
                 self.mav.command_ack_send(command=constants.MIL_SYSTEM_CMD, result=mavlink.MAV_RESULT_ACCEPTED)
 
 
@@ -97,7 +98,8 @@ class VehicleManager:
         """
         if message.get_srcSystem() != 1:
             return
-        if self.check_mode("GUIDED") and self.uncontrolled_event.is_set():
+        mode = self.status.mode_map_bynumber.get(message.custom_mode)
+        if mode == "GUIDED" and self.uncontrolled_event.is_set():
             print("Uncontrolled event cleared due to mode change to GUIDED.")
             self.uncontrolled_event.clear()
             self.cancel_mission_event.clear()
