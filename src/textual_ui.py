@@ -90,7 +90,7 @@ class MissionControl(App):
         elif message.get_srcSystem() == 1 and message.get_srcComponent() == mavlink.MAV_COMP_ID_ONBOARD_COMPUTER:
             self.last_companion_heartbeat = time.monotonic()
             self.companion_state = message.system_status
-
+            print(f"Pi heartbeat: state = {message.system_status}")
     
     def on_mavlink_sys_status(self, message: mavlink.MAVLink_sys_status_message):
         if message.get_srcSystem() != 1:
@@ -164,7 +164,10 @@ class MissionControl(App):
         table = self.query_one(DataTable)
         current_ned_str = table.get_cell(row_key="NED Location", column_key="value")
         current_ned_str = current_ned_str.split('|')
-        ned_error = f"{message.x - float(current_ned_str[0]):.2f} | {message.y - float(current_ned_str[1]):.2f} | {message.z - float(current_ned_str[2]):.2f}"
+        #if current_ned_str == '--':
+        ned_error = ""
+        #else:
+          #  ned_error = f"{message.x - float(current_ned_str[0]):.2f} | {message.y - float(current_ned_str[1]):.2f} | {message.z - float(current_ned_str[2]):.2f}"
 
         table.update_cell(row_key="NED Target", column_key="value", value=target_ned)
         table.update_cell(row_key="NED Error", column_key="value", value=ned_error)
