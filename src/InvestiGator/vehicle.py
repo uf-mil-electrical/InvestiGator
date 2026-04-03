@@ -120,6 +120,7 @@ class VehicleManager:
         if (manual_control or unintended_landing) and not self.mav_connection.system_status == constants.MIL_STATE_INITIAL_OVERRIDE:
             print(f"Manual mode: {manual_control}, Mode String: {mode}")
             print(f"Intended Land: {self.intended_rtl_land}")
+            print(f"System Status: {self.mav_connection.system_status}")
             self.uncontrolled_event.set()
             self.cancel_mission_event.set()
             self.mav_connection.system_status = constants.MIL_STATE_OVERRIDE
