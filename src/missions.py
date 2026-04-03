@@ -177,3 +177,29 @@ def wait_for_cancel(vehicle: VehicleManager):
             return True
         time.sleep(0.1) 
 
+@mission("Ups and Downs")
+def square_test(vehicle:VehicleManager):
+    """ 
+    This mission will launch the drone and land - by Ethan Mitchell
+    """
+    if not vehicle.set_mode(target_mode = "GUIDED"):
+        return False
+    
+    print("Guided mode set")
+
+    if not vehicle.arm():
+        return False
+
+    print("Vehicle armed")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 10m".encode())
+    
+    if not vehicle.takeoff(alt_m = 10):
+        vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "I died :(".encode())
+        vehicle.land()
+        return False
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off good :)\nmoving to sleep honkshoo".encode())
+    time.sleep(2)
+
+    return vehicle.land()
+
