@@ -41,7 +41,7 @@ class VehicleManager:
 
         self.intended_rtl_land = False
 
-        self.MANUAL_MODES = {"LOITER", "STABILIZE", "ALT_HOLD"}
+        self.MANUAL_MODES = {"LOITER", "ALT_HOLD"}
         self.LANDING_MODES = {"LAND", "RTL"}
 
         self.configure_messages()
