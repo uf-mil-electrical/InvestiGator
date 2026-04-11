@@ -111,8 +111,12 @@ def square_test(vehicle:VehicleManager):
 
     if not vehicle.arm():
         return False
+<<<<<<< HEAD
 
 
+=======
+    time.sleep(2)
+>>>>>>> 3ecb30d8720c71614737741f04d981ec6048168d
     print("Vehicle armed")
     time.sleep(2)
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 3m".encode())
@@ -182,7 +186,11 @@ def wait_for_cancel(vehicle: VehicleManager):
 @mission("Ups and Downs")
 def ups_and_downs(vehicle:VehicleManager):
     """ 
+<<<<<<< HEAD
     This mission will launch the drone go in a 2x2 m square (clockwise) then return to launch>
+=======
+    This mission will launch the drone and land - by Ethan Mitchell
+>>>>>>> 3ecb30d8720c71614737741f04d981ec6048168d
     """
     if not vehicle.set_mode(target_mode = "GUIDED"):
         return False
@@ -191,6 +199,7 @@ def ups_and_downs(vehicle:VehicleManager):
 
     if not vehicle.arm():
         return False
+<<<<<<< HEAD
 
     time.sleep(2)
     print("Vehicle armed")
@@ -202,6 +211,18 @@ def ups_and_downs(vehicle:VehicleManager):
         return False
 
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off good :0\nmoving to sleep honkshoo".encode())
+=======
+    time.sleep(2)
+    print("Vehicle armed")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 10m".encode())
+    
+    if not vehicle.takeoff(alt_m = 10):
+        vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "I died :(".encode())
+        vehicle.land()
+        return False
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off good :)\nmoving to sleep honkshoo".encode())
+>>>>>>> 3ecb30d8720c71614737741f04d981ec6048168d
     time.sleep(2)
 
     return vehicle.land()
@@ -241,4 +262,8 @@ def rtl_batt_test(vehicle:VehicleManager):
             vehicle.statustext_send("RTL detected. Start voltage: {start_voltage} End voltage: {end_voltage}\nTime taken: {duration}")
             return True
 
+<<<<<<< HEAD
     return False
+=======
+    return False
+>>>>>>> 3ecb30d8720c71614737741f04d981ec6048168d

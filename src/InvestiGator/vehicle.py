@@ -26,7 +26,7 @@ class VehicleManager:
         self.uncontrolled_event.set()
 
         self.detection_queue: Queue[MarkerDetection] = Queue()
-        self.camera = Camera(self.detection_queue, preview=True)
+        self.camera = Camera(self.detection_queue, preview=False)
 
         self.publish = self.mav_connection.publish
         self.publish_function = self.mav_connection.publish_function
