@@ -3,10 +3,16 @@ from multiprocessing.synchronize import Event as EventType
 from typing import List, Tuple, Optional
 from collections import namedtuple
 import depthai as dai
+from pathlib import Path
+from datetime import datetime
 
 import numpy as np
 import cv2
 import time
+
+RECORDING_DIR = Path(__file__).parent.parent / "recordings"
+RECODRING_RESOLUTION = (1280, 720)
+DETECTION_RESOLUTION = (1280, 720)
 
 # TODO: Dictionary for the pose queue, paths of model blobs
 
@@ -203,15 +209,22 @@ class Camera:
         """
         with dai.Pipeline() as pipeline:
             cam = pipeline.create(dai.node.Camera).build(dai.CameraBoardSocket.CAM_A)
+            
+            videoEncoder = pipeline.create(dai.node.VideoEncoder).build(cam.requestOutput(RECODRING_RESOLUTION, dai.ImgFrame.Type.NV12, enableUndistortion=True))
+            videoEncoder.setProfile(dai.VideoEncoderProperties.Profile.H264_MAIN)
+            record = pipeline.create(dai.node.RecordVideo)
+            record.setRecordVideoFile(RECORDING_DIR / datetime.now().strftime("%d-%m-%y_%H-%M"))
+            videoEncoder.out.link(record.input)
+            
             detector = None
 
             if self.mode in ("UAV Recovery", "Recording"):
-                video_queue = cam.requestOutput(size=(1280,720), enableUndistortion=True, fps=30).createOutputQueue()
+                video_queue = cam.requestOutput(size=DETECTION_RESOLUTION, enableUndistortion=True, fps=30).createOutputQueue()
                 detector = self.aruco_detector()
             
             else:
                 print(f"Selected mode not supported: {self.mode}. Defaulting to recording mode.")
-                video_queue = cam.requestOutput(size=(1280,720), enableUndistortion=True, fps=30).createOutputQueue()
+                video_queue = cam.requestOutput(size=DETECTION_RESOLUTION, enableUndistortion=True, fps=30).createOutputQueue()
 
             pipeline.start()
             try:
