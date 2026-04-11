@@ -111,7 +111,7 @@ def square_test(vehicle:VehicleManager):
 
     if not vehicle.arm():
         return False
-
+    time.sleep(2)
     print("Vehicle armed")
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 10m".encode())
     
@@ -178,7 +178,7 @@ def wait_for_cancel(vehicle: VehicleManager):
         time.sleep(0.1) 
 
 @mission("Ups and Downs")
-def square_test(vehicle:VehicleManager):
+def ups_and_downs(vehicle:VehicleManager):
     """ 
     This mission will launch the drone and land - by Ethan Mitchell
     """
@@ -189,7 +189,7 @@ def square_test(vehicle:VehicleManager):
 
     if not vehicle.arm():
         return False
-
+    time.sleep(2)
     print("Vehicle armed")
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 10m".encode())
     
@@ -203,3 +203,39 @@ def square_test(vehicle:VehicleManager):
 
     return vehicle.land()
 
+@mission("rtl_batt_test")
+def rtl_batt_test(vehicle:VehicleManager):
+    """
+    This mission will launch the drone and hold in the air until 21.6V and return to launch
+    """
+
+    if not vehicle.set_mode(target_mode = "GUIDED"):
+        return False
+
+    print("Guided mode set")
+
+    if not vehicle.arm():
+        return False
+
+    time.sleep(2)
+    print("Vehicle armed")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 5m".encode())
+
+    time_start = time.monotonic()
+    start_voltage = vehicle.status.voltage_battery
+
+    if not vehicle.takeoff(alt_m = 5):
+        vehicle.mav.statustext_send(mavlink.MAV_SEVERRITY_INFO, "I died :(".encode())
+        vehicle.land()
+        return False
+    vehicle.intended_rtl_land = True
+    while True:
+        if vehicle.check_mode == "RTL":
+            duration = time_start - time.monotonic()
+            end_voltage = vehicle.status.volatge_battery
+            print(f"RTL detected. Start voltage: {start_voltage} End voltage: {end_voltage}")
+            print(f"Time taken: {duration}")
+            vehicle.statustext_send("RTL detected. Start voltage: {start_voltage} End voltage: {end_voltage}\nTime taken: {duration}")
+            return True
+
+    return False
