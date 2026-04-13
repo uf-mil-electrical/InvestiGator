@@ -246,6 +246,7 @@ class MissionControl(App):
                         table = self.query_one(DataTable)
                         table.update_cell(row_key="Magnet State", column_key="value", value=new_magnet_state)
                         self.magnet_state = new_magnet_state
+                    self.log_(message)
 
 
     @work(thread=True)
