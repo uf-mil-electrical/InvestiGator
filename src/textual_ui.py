@@ -26,7 +26,8 @@ STATUS_TABLE_ROWS = [
     "Attitude Degrees",
     "Heading",
     "Battery Voltage",
-    "Battery Current"
+    "Battery Current",
+    "Magnet State"
 ]
 
 MAV_SEVERITY_TO_COLOR = {
@@ -63,6 +64,7 @@ class MissionControl(App):
 
         self.last_companion_heartbeat: float = 0.0
         self.last_drone_heartbeat: float = 0.0
+        self.magnet_state: int = 0
 
         super().__init__()
 
@@ -210,9 +212,9 @@ class MissionControl(App):
     @work(thread=True)
     def send_command(self, command, param1=0.0, param2=0.0, param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0, target_system=1, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER):
         result = gc_helpers.send_command(connection=self.connection, command=command, param1=param1, param2=param2, param3=param3, param4=param4, param5=param5, param6=param6, param7=param7, target_system=target_system, target_component=target_component)
-        self.call_from_thread(self.command_callback, result, command, param1)
+        self.call_from_thread(self.command_callback, result, command, param1, param2)
     
-    def command_callback(self, result, command, param1):
+    def command_callback(self, result, command, param1, param2):
         system_command = None
         if command == constants.MIL_SYSTEM_CMD:
             match param1:
@@ -224,6 +226,8 @@ class MissionControl(App):
                     system_command = "Uncontrolled"
                 case constants.MIL_SYSTEM_CANCEL:
                     system_command = "Cancel Mission"
+                case constants.MIL_SYSTEM_MAGNET:
+                    system_command = "Magnet Toggle"
 
             if system_command is None:
                 message = f"Unknown command {"acknowledged" if result else "failed"}: (Command: {command}, param1: {param1}"
@@ -232,6 +236,16 @@ class MissionControl(App):
             else:
                 message = f"System command {system_command} {"acknowledged" if result else "failed"}"
                 self.log_(message)
+
+                if param1 == constants.MIL_SYSTEM_MAGNET:
+                    new_magnet_state = param2
+                    if (self.magnet_state == param2):
+                        message = "No change to magnet state."
+                    else:
+                        message = f"Magnet State changed from {self.magnet_state} -> {new_magnet_state}"
+                        table = self.query_one(DataTable)
+                        table.update_cell(row_key="Magnet State", column_key="value", value=new_magnet_state)
+                        self.magnet_state = new_magnet_state
 
 
     @work(thread=True)
@@ -286,6 +300,8 @@ class MissionControl(App):
                             yield Button(id="set_guided_button", label="Enable Guided", variant="success")
                         with Center():
                             yield Button(id="send_ping_button", label="Send Pi Ping", variant="primary")
+                        with Center():
+                            yield Button(id="toggle_magnet_button", label="Toggle Magnet", variant="primary")
 
             
             with Vertical(id="log_panel", classes="panel") as log_panel:
@@ -313,6 +329,15 @@ class MissionControl(App):
 
         elif event.button.id == "send_ping_button":
             self.send_command(command=constants.MIL_SYSTEM_CMD, param1=0)
+        
+        elif event.button.id == "toggle_magnet_button":
+            new_magnet_state = 0
+            if (self.magnet_state == 0): 
+                new_magnet_state = 1
+            else:
+                new_magnet_state = 0
+
+            self.send_command(command=constants.MIL_SYSTEM_CMD, param1=constants.MIL_SYSTEM_MAGNET, param2=new_magnet_state)
             
     def on_select_changed(self, event: Select.Changed):
         select = self.query_one(Select)

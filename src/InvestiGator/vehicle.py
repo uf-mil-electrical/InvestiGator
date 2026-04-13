@@ -12,6 +12,7 @@ from .mavconnection import MAVConnection
 from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
 from .camera import Camera, MarkerDetection
 from . import constants
+from . import magnet_control
 
 class VehicleManager:
     """
@@ -86,6 +87,16 @@ class VehicleManager:
                     print("Received system command: Cancel mission.")
                     if self.mav_connection.system_status == constants.MIL_STATE_MISSION:
                         self.cancel_mission_event.set()
+                
+                case constants.MIL_SYSTEM_MAGNET:
+                    print("Received system command: Magnet Control")
+                    match message.param2:
+                        case magnet_control.ON:
+                            magnet_control.magnet_control(setting=magnet_control.ON)
+                        case magnet_control.OFF:
+                            magnet_control.magnet_control(setting=magnet_control.OFF)
+                        case _:
+                            print(f"Invalid magnet control param: {message.param2}")
             
             if message.param1 in constants.MIL_SYSTEM_CMDS:
                 print("Sending command ack")
