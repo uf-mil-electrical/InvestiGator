@@ -7,21 +7,26 @@
 # RPi 5 Pinout: https://pinout.xyz/pinout/pin11_gpio17/
 # Magnet documentation: https://fluxgrip.zubax.com/chapters/tutorials/quick_start_fg40_analog.html#voltage-level-control
 
-from gpiozero import Device, OutputDevice
-from gpiozero.pins.lgpio import LGPIOFactory
-from gpiozero import Device
-Device.pin_factory = LGPIOFactory()
+try:
+    from gpiozero import Device, OutputDevice
+    from gpiozero.pins.lgpio import LGPIOFactory
+    from gpiozero import Device
+    Device.pin_factory = LGPIOFactory()
 
-PIN17: int = 17
-OFF: int = 0
-ON: int = 1
-magnet = OutputDevice(PIN17)
 
-def magnet_control(setting: int):
-    """
-    Turn on or off the magnet via GPIO. 3.3V = ON, 0V = OFF.
-    """
-    if setting == ON:
-        magnet.on()
-    elif setting == OFF:
-        magnet.off()
+    PIN17: int = 17
+    OFF: int = 0
+    ON: int = 1
+    magnet = OutputDevice(PIN17)
+
+    def magnet_control(setting: int):
+        """
+        Turn on or off the magnet via GPIO. 3.3V = ON, 0V = OFF.
+        """
+        if setting == ON:
+            magnet.on()
+        elif setting == OFF:
+            magnet.off()
+
+except ImportError:
+    pass
