@@ -1,34 +1,27 @@
-# Install the rpi_lgpio library: uv pip install rpi-lgpio OR uv add rpi-lgpio
-# API: https://rpi-lgpio.readthedocs.io/en/latest/api.html
+# Tutorial: https://oneuptime.com/blog/post/2026-03-02-how-to-configure-gpio-access-on-ubuntu-for-raspberry-pi/view
+    # Install the following:
+    # sudo apt-get install -y gpiod libgpiod-dev
+    # sudo apt install liblgpio-dev
+    # Then follow the tutorial above for configuring GPIO permissions
+# API: https://gpiozero.readthedocs.io/en/latest/api_output.html#outputdevice
 # RPi 5 Pinout: https://pinout.xyz/pinout/pin11_gpio17/
 # Magnet documentation: https://fluxgrip.zubax.com/chapters/tutorials/quick_start_fg40_analog.html#voltage-level-control
 
-from RPi import GPIO
+from gpiozero import Device, OutputDevice
+from gpiozero.pins.lgpio import LGPIOFactory
+from gpiozero import Device
+Device.pin_factory = LGPIOFactory()
 
 PIN17: int = 17
 OFF: int = 0
 ON: int = 1
-
-def init_gpio():
-    """
-    Set Board Pin 11/BCM Pin 17 to output for usage with GPIO magnet.
-    """
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(channel=PIN17, direction=GPIO.OUT, pull_up_down=GPIO.PUD_OFF, initial=OFF)
-
-
-def cleanup_gpio():
-    """
-    Wrapper for Rpi.GPIO cleanup function. Resets GPIO pins to default values.
-    """
-    GPIO.cleanup(channel=PIN17)
-
+magnet = OutputDevice(PIN17)
 
 def magnet_control(setting: int):
     """
     Turn on or off the magnet via GPIO. 3.3V = ON, 0V = OFF.
     """
     if setting == ON:
-        GPIO.output(PIN17, GPIO.HIGH)
+        magnet.on()
     elif setting == OFF:
-        GPIO.output(PIN17, GPIO.LOW)
+        magnet.off()
