@@ -236,7 +236,9 @@ class MissionControl(App):
             else:
                 message = f"System command {system_command} {"acknowledged" if result else "failed"}"
                 self.log_(message)
-
+                # TODO: This is checking the wrong thing. We can add result_param2 to the return of gc_helpers.send_command
+                # and send the magnet state from vehicle.py's handle_system_command that way, or send a failed ack result 
+                # and change handle_system_command to send accepted if the magnet state == requested state
                 if param1 == constants.MIL_SYSTEM_MAGNET:
                     new_magnet_state = param2
                     if (self.magnet_state == param2):
