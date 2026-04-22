@@ -1,0 +1,112 @@
+.panel {
+    background: $surface-lighten-1;
+    border: panel $secondary;
+    border-title-align: center;
+}
+
+Button:focus {
+    # Disable text background on focus
+    text-style: none;
+}
+
+#left {
+    width: 45%;
+}
+
+#status_panel {
+    height: 55%;
+    margin-bottom: 1
+}
+
+# ################################
+#      Mission Select Panel      #
+# ################################
+
+#mission_select_panel {
+    width: 2fr;
+    padding-top: 3;
+}
+
+#mission_selector {
+    width: 80%;
+}
+
+#start_mission_button {
+    margin-top: 1;
+    width: 40%;
+}
+
+#cancel_mission_button {
+    margin-top: 1;
+    width: 40%;
+    display: None;
+}
+
+#uncontrolled_state_message {
+    display: None;
+}
+
+# ################################
+#      System Commands Panel     #
+# ################################
+#system_panel {
+    align: center middle;
+}
+
+#recording_button {
+}
+
+#mission_abort_button {
+    margin-top: 1;
+    margin-bottom: 1;
+}
+
+#set_guided_button {
+
+}
+
+# ################################
+#      Mission Started Class     #
+# ################################
+
+.mission_started #start_mission_button{
+    display: None;
+}
+
+.mission_started #cancel_mission_button {
+    display: block;
+}
+
+.mission_started #mission_selector {
+    color: red;
+}
+
+.mission_started #mission_select_panel {
+    background: $surface-darken-2;
+}
+
+# ################################
+#        Mission Abort Class     #
+# ################################
+
+.mission_abort #mission_select_panel {
+    background: $surface-darken-2;
+}
+
+.mission_abort #start_mission_button {
+    display: None;
+}
+
+.mission_abort #mission_selector {
+    display: None;
+}
+
+.mission_abort #uncontrolled_state_message {
+    display: block;
+    content-align: center middle;
+    margin-top: 2;
+}
+
+.mission_abort #cancel_mission_button {
+    display: None;
+}

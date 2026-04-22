@@ -1,0 +1,23 @@
+# Directions: Copy everything below this comment into InvestiGator/config.toml
+# Replace relevant connection strings with the IP/COM Port/Serial ID for that device.
+
+# Hardware:
+# Ground control is for the RFD900x Radio Modem labeled MAIN
+# Flight controller is the connection string for the OrangeCube+
+# rover_radio is for the RFD900x Radio Modem labeled ROVER and included for documentation
+
+# Simulation:
+# ground_control is the IP of the computer running the ground_control script
+# companion_computer is the IP of the computer running the companion_computer script
+
+
+[hardware]
+ground_control = "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTDCKG37-if00-port0"
+ground_control_baud = 57600 
+rover_radio = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG00HS6A-if00-port0"
+flight_controller = "example string"
+flight_controller_baud = 921600
+
+[simulation]
+ground_control = "udpin:x.x.x.x:14550"
+companion_computer = "udpin:x.x.x.x:14551"
