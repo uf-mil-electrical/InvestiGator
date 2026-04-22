@@ -11,8 +11,7 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from .mavconnection import MAVConnection
 from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
 from .camera import Camera, MarkerDetection
-from .constants import MIL_MISSION_CANCEL, MIL_MISSION_ABORT, MIL_SYSTEM_CMD
-
+from . import constants
 
 class VehicleManager:
     """
@@ -27,7 +26,7 @@ class VehicleManager:
         self.uncontrolled_event.set()
 
         self.detection_queue: Queue[MarkerDetection] = Queue()
-        self.camera = Camera(self.detection_queue, preview=True)
+        self.camera = Camera(self.detection_queue, preview=False)
 
         self.publish = self.mav_connection.publish
         self.publish_function = self.mav_connection.publish_function
@@ -42,28 +41,17 @@ class VehicleManager:
 
         self.intended_rtl_land = False
 
-        self.MANUAL_MODES = {"LOITER", "STABILIZE", "ALT_HOLD"}
+        self.MANUAL_MODES = {"LOITER", "ALT_HOLD"}
         self.LANDING_MODES = {"LAND", "RTL"}
 
         self.configure_messages()
         self.wait_for_condition(self.properties_populated)
 
-        self.subscribe(mavlink.MAVLink_command_long_message.msgname)(self.handle_abort_cancel)
+        self.mav_connection.system_status = constants.MIL_STATE_INITIAL_OVERRIDE
+
         self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.clear_uncontrolled_event)
         self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.check_intended_mode)
         self.subscribe(mavlink.MAVLink_command_long_message.msgname)(self.handle_system_command)
-
-
-    def handle_abort_cancel(self, message: mavlink.MAVLink_command_long_message):
-        """
-        Set uncontrolled and cancel events when the relevant MIL_MISSION command is received.
-        Subscribed to MAVLink_command_long_message.
-        """
-        if message.command == MIL_MISSION_CANCEL:
-            self.cancel_mission_event.set()
-        if message.command == MIL_MISSION_ABORT:
-            self.uncontrolled_event.set()
-            self.cancel_mission_event.set()
 
     
     def handle_system_command(self, message: mavlink.MAVLink_command_long_message):
@@ -74,23 +62,34 @@ class VehicleManager:
         param1 = 2: Set uncontrolled
         param1 = 3: Set cancel mission
         """
-        if message.command == MIL_SYSTEM_CMD:
-            if message.param1 == 0:
-                # TODO: Send message back to ground control
-                print("Ping received from ground control.")
-            elif message.param1 == 1:
-                if self.uncontrolled_event.is_set():
-                    # Run command in a separate thread to not block subscription manager.
-                    print("Received system command: GUIDED. Setting mode to GUIDED.")
-                    Thread(target=self.set_mode, args=("GUIDED",), daemon=True).start()
-            elif message.param1 == 2:
-                print("Received system command: Set uncontrolled.")
-                self.cancel_mission_event.set()
-                self.uncontrolled_event.set()
-                Thread(target=self.set_mode, args=("RTL",), daemon=True).start()
-            elif message.param1 == 3:
-                print("Received system command: Cancel mission.")
-                self.cancel_mission_event.set()
+        if message.command == constants.MIL_SYSTEM_CMD:
+            match message.param1:
+                case constants.MIL_SYSTEM_PING:
+                    self.mav_connection.mav.statustext_send(severity=mavlink.MAV_SEVERITY_WARNING, text="Pong".encode())
+                    print("Ping received from ground control.")
+
+                case constants.MIL_SYSTEM_GUIDED:
+                    if self.uncontrolled_event.is_set():
+                        # Run command in a separate thread to not block subscription manager.
+                        print("Received system command: GUIDED. Setting mode to GUIDED.")
+                        Thread(target=self.set_mode, args=("GUIDED",), daemon=True).start()
+
+                case constants.MIL_SYSTEM_OVERRIDE:
+                    print("Received system command: Set uncontrolled.")
+                    if self.mav_connection.system_status == constants.MIL_STATE_MISSION:
+                        self.cancel_mission_event.set()
+                    self.uncontrolled_event.set()
+                    self.mav_connection.system_status = constants.MIL_STATE_OVERRIDE
+                    Thread(target=self.set_mode, args=("RTL",), daemon=True).start()
+
+                case constants.MIL_SYSTEM_CANCEL:
+                    print("Received system command: Cancel mission.")
+                    if self.mav_connection.system_status == constants.MIL_STATE_MISSION:
+                        self.cancel_mission_event.set()
+            
+            if message.param1 in constants.MIL_SYSTEM_CMDS:
+                print("Sending command ack")
+                self.mav.command_ack_send(command=constants.MIL_SYSTEM_CMD, result=mavlink.MAV_RESULT_ACCEPTED)
 
 
     def clear_uncontrolled_event(self, message: mavlink.MAVLink_heartbeat_message):
@@ -99,11 +98,13 @@ class VehicleManager:
         """
         if message.get_srcSystem() != 1:
             return
-        if self.check_mode("GUIDED") and self.uncontrolled_event.is_set():
+        mode = self.status.mode_map_bynumber.get(message.custom_mode)
+        if mode == "GUIDED" and self.uncontrolled_event.is_set():
             print("Uncontrolled event cleared due to mode change to GUIDED.")
             self.uncontrolled_event.clear()
             self.cancel_mission_event.clear()
             self.intended_rtl_land = False
+            self.mav_connection.system_status = constants.MIL_STATE_STANDBY
 
     
     def check_intended_mode(self, message: mavlink.MAVLink_heartbeat_message):
@@ -114,22 +115,31 @@ class VehicleManager:
         if message.get_srcSystem() != 1:
             return
         
-        manual_control = self.status.mode_string in self.MANUAL_MODES
-        unintended_landing = self.status.mode_string in self.LANDING_MODES and not self.intended_rtl_land
+        mode = self.status.mode_map_bynumber.get(message.custom_mode)
+        manual_control = mode in self.MANUAL_MODES
+        unintended_landing = mode in self.LANDING_MODES and not self.intended_rtl_land
 
-        if manual_control or unintended_landing:
+        if (manual_control or unintended_landing) and not self.mav_connection.system_status == constants.MIL_STATE_INITIAL_OVERRIDE and not self.mav_connection.system_status == constants.MIL_STATE_OVERRIDE:
+            print(f"Manual mode: {manual_control}, Mode String: {mode}")
+            print(f"Intended Land: {self.intended_rtl_land}")
+            print(f"System Status: {self.mav_connection.system_status}")
             self.uncontrolled_event.set()
             self.cancel_mission_event.set()
+            self.mav_connection.system_status = constants.MIL_STATE_OVERRIDE
     
 
     def configure_messages(self):
         """
         Send requests for messages from autopilot to ensure required data is being sent.
+        param2 is interval requested in microseconds.
         """
-        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, param2=10000)
-        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED, param2=10000)
-        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_SYS_STATUS, param2=10000)
-        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_ATTITUDE, param2=10000)
+        ten_hz_us = (1/10) * 1E6
+        five_hz_us = (1/5) * 1E6
+
+        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, param2=ten_hz_us)
+        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED, param2=ten_hz_us)
+        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_SYS_STATUS, param2=ten_hz_us)
+        self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_ATTITUDE, param2=ten_hz_us)
 
 
     def wait_for_condition(self, condition_function, timeout_s=30.0, interval_s=0.1):
@@ -586,6 +596,9 @@ class VehicleManager:
         """
         self.cancel_mission_event.clear()
         self.intended_rtl_land = False
+
+        if not self.uncontrolled_event.is_set():
+            self.mav_connection.system_status = constants.MIL_STATE_STANDBY
 
     def close(self):
         #self.mav_connection.close()

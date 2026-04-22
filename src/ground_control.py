@@ -2,22 +2,32 @@ from InvestiGator import MAVConnection
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from config import load_config
 import argparse
-from missions import MISSIONS, MISSION_MENU, send_mission_message_wait_ack, wait_for_mission_complete, valid_mission
 from InvestiGator.constants import MIL_SYSTEM_CMD
 import time
+from gc_helpers import valid_mission, wait_for_mission_complete, send_mission_message_wait_ack, MISSIONS, MISSION_MENU, send_system_command
+from textual_ui import MissionControl
 
 
-def initialize() -> MAVConnection:
+def parse_args():
     """
-    Get MAVLink connection. By default, connection is made to hardware RFD900x radio modem. Simulation can be selected with -s/--sim flag. 
+    Get arguments from argparse.
+    Simulation can be selected with -s/--sim flag.
+    No_GUI mode can be selected with --no_gui flag.
+    """
+    parser = argparse.ArgumentParser(description="Ground Control script for InvestiGator UAV. Default connection is to RFD900x radio modem. Use -s/--sim to connect to SITL. Connection strings are defined in config.toml.")
+    
+    parser.add_argument("-s", "--sim", action="store_true", help="Use simulation connection string from config.toml")
+    parser.add_argument("--no_gui", action="store_true", help="Run in CLI mode.")
+    
+    return parser.parse_args()
+
+
+def create_connection(args) -> MAVConnection:
+    """
+    Get MAVLink connection. By default, connection is made to hardware RFD900x radio modem.  
     Strings for connection are stored in InvestiGator/config.toml.
     """
-
     config: dict = load_config()
-
-    parser = argparse.ArgumentParser(description="Ground Control script for InvestiGator UAV. Default connection is to RFD900x radio modem. Use -s/--sim to connect to SITL. Connection strings are defined in config.toml.")
-    parser.add_argument("-s", "--sim", action="store_true", help="Use simulation connection string from config.toml")
-    args = parser.parse_args()
 
     if args.sim:
         address = config["simulation"].get("ground_control")
@@ -27,66 +37,58 @@ def initialize() -> MAVConnection:
     baud = config["hardware"].get("ground_control_baud")
 
     print(f"Connecting with address: {address}")
-    connection = MAVConnection(address, source_system=254, baud=baud)
+    connection = MAVConnection(address, mav_type=mavlink.MAV_TYPE_GCS, source_system=254, baud=baud)
 
     return connection
 
 
+def run_gui(connection: MAVConnection):
+    """
+    Run Textual GUI.
+    """
+    app = MissionControl(connection)
+    app.run()
+
+
+def run_cli(connection: MAVConnection):
+    """
+    Run CLI prompt for running missions and communicating with InvestiGator UAV.
+    """
+    while True:
+        print(MISSION_MENU)
+        mission_number = input("Enter selection: ")
+
+        if mission_number in ("p", "g", "u", "c"):
+            send_system_command(connection, mission_number)
+            continue
+
+        if not valid_mission(mission_number):
+            continue
+
+        mission_number = int(mission_number)
+        start_s = time.monotonic()
+
+        if not send_mission_message_wait_ack(connection, mission_number):
+            print("Mission failed to be acknowledged.")
+            continue
+
+        if not wait_for_mission_complete(connection, mission_number):
+            print("Mission failed to complete.")
+            continue
+
+        print(f"Mission {mission_number}: {MISSIONS[mission_number].name} completed successfully in {time.monotonic()- start_s:.2f} seconds.\n")
+    
+
 def main():
 
-    connection = initialize()
-    print("Connection made!\n")
+    args = parse_args()
+    connection = create_connection(args)
 
     try:
-        while True:
-            print(MISSION_MENU)
-            mission_number = input("Enter selection: ")
-            
-            if mission_number == "p" or mission_number == "g":
-                connection.mav.command_long_send(
-                    target_system = 1,
-                    target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
-                    command = MIL_SYSTEM_CMD,
-                    confirmation = 0,
-                    param1 = 0 if mission_number == "p" else 1,
-                    param2 = 0,
-                    param3 = 0,
-                    param4 = 0,
-                    param5 = 0,
-                    param6 = 0,
-                    param7 = 0)
-                continue
-
-            if mission_number == "u" or mission_number == "c":
-                connection.mav.command_long_send(
-                    target_system = 1,
-                    target_component = mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
-                    command = MIL_SYSTEM_CMD,
-                    confirmation = 0,
-                    param1 = 2 if mission_number == "u" else 3,
-                    param2 = 0,
-                    param3 = 0,
-                    param4 = 0,
-                    param5 = 0,
-                    param6 = 0,
-                    param7 = 0)
-                continue
-
-            if not valid_mission(mission_number):
-                continue
-
-            mission_number = int(mission_number)
-            start_s = time.monotonic()
-
-            if not send_mission_message_wait_ack(connection, mission_number):
-                print("Mission failed to be acknowledged.")
-                continue
-
-            if not wait_for_mission_complete(connection, mission_number):
-                print("Mission failed to complete.")
-                continue
-
-            print(f"Mission {mission_number}: {MISSIONS[mission_number].name} completed successfully in {time.monotonic()- start_s:.2f} seconds.\n")
+        if args.no_gui:
+            run_cli(connection)
+        else:
+            run_gui(connection)
 
     finally:
         connection.close()    

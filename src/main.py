@@ -1,10 +1,11 @@
 from InvestiGator import MAVConnection
 from InvestiGator import VehicleManager
-from InvestiGator.constants import MIL_MISSION_ABORT, MIL_MISSION_CANCEL, MIL_MISSION_CMD
+from InvestiGator.constants import MIL_MISSION_CMD, MIL_STATE_MISSION
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 import argparse
 from config import load_config
-from missions import MISSIONS, MISSION_MENU, accept_mission, send_mission_complete, valid_mission
+from missions import MISSIONS, accept_mission, send_mission_complete
+from gc_helpers import valid_mission, MISSION_MENU
 from threading import Event
 
 interactive = False
@@ -30,7 +31,7 @@ def initialize() -> MAVConnection:
     baud = config["hardware"].get("flight_controller_baud")
 
     print(f"Connecting with address: {address}")
-    connection = MAVConnection(address, source_system=1, source_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER, baud=baud)
+    connection = MAVConnection(address, mav_type=mavlink.MAV_TYPE_ONBOARD_CONTROLLER, source_system=1, source_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER, baud=baud)
 
     return connection
 
@@ -69,6 +70,7 @@ def main():
                     command_event.clear()
                     continue
                 
+                connection.system_status = MIL_STATE_MISSION
                 success = MISSIONS[mission_number].function(vehicle)
                 send_mission_complete(connection, mission_number, success=success)
 
