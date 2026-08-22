@@ -102,7 +102,7 @@ def arm(vehicle: VehicleManager):
 @mission("Square_Test")
 def square_test(vehicle:VehicleManager):
     """ 
-    This mission will launch the drone go in a 2x2 m square (clockwise) then return to launch and land - by Ethan Mitchell
+    This mission will launch the drone go in a 10x10 m square (counter clockwise) then return to launch and land: Pilot safety check - Element 1 - by Ethan Mitchell
     """
     if not vehicle.set_mode(target_mode = "GUIDED"):
         return False
@@ -113,49 +113,219 @@ def square_test(vehicle:VehicleManager):
         return False
     time.sleep(2)
     print("Vehicle armed")
-    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 10m".encode())
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 3m".encode())
     
-    if not vehicle.takeoff(alt_m = 10):
+    if not vehicle.takeoff(alt_m = 3):
         vehicle.land()
         return False
 
-    print("Vehicle at altitude = 10m")
-    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Vehicle at altitude = 10m".encode())
+    print("Vehicle at altitude = 3m")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Vehicle at altitude = 3m".encode())
 
     time.sleep(2)
     
-    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving forward 2m".encode())
-    if not vehicle.move_body_frd_position(forward_m=2, right_m=0, timeout_s=10):
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving right 5m".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=5, timeout_s=10):
+        print("Failed to move right, landing")
+        vehicle.land()
+        return False
+
+    time.sleep(2)
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving forward 10m".encode())
+    if not vehicle.move_body_frd_position(forward_m=10, right_m=0, timeout_s=10):
         print("Failed to move forward, landing")
         vehicle.land()
         return False
+    
+    time.sleep(2)
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving left 10m".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=-10, timeout_s=10):
+        print("Failed to move left, landing")
+        vehicle.land()
+        return False
+    
+    time.sleep(2)
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving back 10m".encode())
+    if not vehicle.move_body_frd_position(forward_m=-10, right_m=0, timeout_s=10):
+        print("Failed to move back, landing")
+        vehicle.land()
+        return False
 
     time.sleep(2)
     
-    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving right 2m".encode())
-    if not vehicle.move_body_frd_position(forward_m=0, right_m=2, timeout_s=10):
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving right 5m".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=5, timeout_s=10):
+        print("Failed to move right, landing")
+        vehicle.land()
+        return False
+    
+    print("Movement success! Landing.")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Square success! Landing".encode())
+
+    return vehicle.land()
+
+@mission("Hour_Glass")
+def hour_glass(vehicle:VehicleManager):
+    """ 
+    This mission will launch the drone go in an hour glass shape(right, diagonal forward and left, right, diagonal back and left) 10x10m then return to launch and land: Pilot safety check - Element 2 - by Ethan Mitchell
+    """
+    if not vehicle.set_mode(target_mode = "GUIDED"):
+        return False
+    
+    print("Guided mode set")
+
+    if not vehicle.arm():
+        return False
+    time.sleep(2)
+    print("Vehicle armed")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 3m".encode())
+    
+    if not vehicle.takeoff(alt_m = 3):
+        vehicle.land()
+        return False
+
+    print("Vehicle at altitude = 3m")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Vehicle at altitude = 3m".encode())
+
+    time.sleep(2)
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving right 5m".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=5, timeout_s=10):
+        print("Failed to move right, landing")
+        vehicle.land()
+        return False
+
+    time.sleep(2)
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving diagonal forward and left 10m".encode())
+    if not vehicle.move_body_frd_position(forward_m=10, right_m=-10, timeout_s=10):
+        print("Failed to move diagonal forward and left, landing")
+        vehicle.land()
+        return False
+    
+    time.sleep(2)
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving right 10m".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=10, timeout_s=10):
         print("Failed to move right, landing")
         vehicle.land()
         return False
     
     time.sleep(2)
     
-    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving back 2m".encode())
-    if not vehicle.move_body_frd_position(forward_m=-2, right_m=0, timeout_s=10):
-        print("Failed to move backward, landing")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving diagonal back and left 10m".encode())
+    if not vehicle.move_body_frd_position(forward_m=-10, right_m=-10, timeout_s=10):
+        print("Failed to move diagonal back and left, landing")
+        vehicle.land()
+        return False
+
+    time.sleep(2)
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving right 5m".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=5, timeout_s=10):
+        print("Failed to move right, landing")
+        vehicle.land()
+        return False
+    
+    print("Movement success! Landing.")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Hour Glass success! Landing".encode())
+
+    return vehicle.land()
+
+@mission("Pirouette")
+def pirouette(vehicle:VehicleManager):
+    """ 
+    This mission will launch the drone, go about 30m out, go left 3 times by 10m and perform a pirouette between each one, then return to launch- Element 3 - by Ethan Mitchell
+    """
+    if not vehicle.set_mode(target_mode = "GUIDED"):
+        return False
+    
+    print("Guided mode set")
+
+    if not vehicle.arm():
+        return False
+    time.sleep(2)
+    print("Vehicle armed")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 3m".encode())
+    
+    if not vehicle.takeoff(alt_m = 3):
+        vehicle.land()
+        return False
+
+    print("Vehicle at altitude = 3m")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Vehicle at altitude = 3m".encode())
+
+    time.sleep(2)
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving up to point 2".encode())
+    if not vehicle.move_body_frd_position(forward_m=15, right_m=15, down_m=-20, timeout_s=10):
+        print("Failed to move to point 2, landing")
+        vehicle.land()
+        return False
+
+    time.sleep(2)
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving left 10m".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=-10, timeout_s=10):
+        print("Failed to move left, landing")
         vehicle.land()
         return False
     
     time.sleep(2)
     
-    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving left 2m".encode())
-    if not vehicle.move_body_frd_position(forward_m=0, right_m=-2, timeout_s=10):
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Pirouette 1".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw=6.28, yaw_rate=1, timeout_s=10):
+        print("Failed to pirouette, landing")
+        vehicle.land()
+        return False
+    
+    time.sleep(2)
+
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving left 10m".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=-10, timeout_s=10):
         print("Failed to move left, landing")
         vehicle.land()
         return False
     
+    time.sleep(2)
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Pirouette 2".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw=6.28, yaw_rate=1, timeout_s=10):
+        print("Failed to pirouette, landing")
+        vehicle.land()
+        return False
+    
+    time.sleep(2)
+
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving left 10m".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=-10, timeout_s=10):
+        print("Failed to move left, landing")
+        vehicle.land()
+        return False
+    
+    time.sleep(2)
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Pirouette 3".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw=6.28, yaw_rate=1, timeout_s=10):
+        print("Failed to pirouette, landing")
+        vehicle.land()
+        return False
+    
+    time.sleep(2)
+    
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving back down to start".encode())
+    if not vehicle.move_body_frd_position(forward_m=-15, right_m=-15, down_m=20, timeout_s=10):
+        print("Failed to move down to start, landing")
+        vehicle.land()
+        return False
+
+    time.sleep(2)
+    
     print("Movement success! Landing.")
-    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Square success! Landing".encode())
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Pirouette success! Landing".encode())
 
     return vehicle.land()
 
