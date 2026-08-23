@@ -317,7 +317,7 @@ def test_down_yaw(vehicle:VehicleManager):
     
 
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Test yaw".encode())
-    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=1, timeout_s=10):
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=1, maintain_heading=False, timeout_s=10):
         print("Failed to test yaw, landing")
         vehicle.land()
         return False
@@ -325,7 +325,7 @@ def test_down_yaw(vehicle:VehicleManager):
     time.sleep(2)
 
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Test yaw stop".encode())
-    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw=0, yaw_rate=0, timeout_s=10):
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw=0, yaw_rate=0, maintain_heading=False, timeout_s=10):
         print("Failed to test yaw stop, landing")
         vehicle.land()
         return False

@@ -287,7 +287,7 @@ class VehicleManager:
         return True
 
 
-    def move_body_frd_position(self, forward_m, right_m, down_m=0.0, maintain_heading=True, timeout_s=30.0):
+    def move_body_frd_position(self, forward_m, right_m, down_m=0.0, yaw=0, yaw_rate=0, maintain_heading=True, timeout_s=30.0):
         """
         Move relative to vehicle's FRD frame by Forward/Right. Optionally wait for target to be reached within timeout_s seconds.
         Will maintain current altitude by default.
@@ -324,8 +324,8 @@ class VehicleManager:
             afx = 0,
             afy = 0,
             afz = 0,
-            yaw = 0,
-            yaw_rate = 0
+            yaw = yaw,
+            yaw_rate = yaw_rate
         )
 
         remaining_s = timeout_s - (time.monotonic() - start_s)
