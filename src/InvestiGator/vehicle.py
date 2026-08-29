@@ -294,11 +294,11 @@ class VehicleManager:
         """
         start_s = time.monotonic()
 
-        XYZ_POS = mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE & \
-        mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE & \
-        mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
+        XYZ_POS = mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE | \
+        mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE | \
+        mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
 
-        XYZ_POS_YAW = XYZ_POS & mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE
+        XYZ_POS_YAW = XYZ_POS & ~mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
 
         typemask = XYZ_POS
         if not maintain_heading:
@@ -329,7 +329,11 @@ class VehicleManager:
         )
 
         remaining_s = timeout_s - (time.monotonic() - start_s)
-        if not self.wait_for_condition(lambda: self.target_ned_reached(target_ned), timeout_s=remaining_s):
+        if maintain_heading:
+            cancel = lambda: self.target_ned_reached(target_ned)
+        else:
+            cancel = lambda: False
+        if not self.wait_for_condition(cancel, timeout_s=remaining_s):
             # Stop movement
             self.mav.set_position_target_local_ned_send(
                 time_boot_ms=0,
@@ -350,7 +354,7 @@ class VehicleManager:
                 yaw_rate = 0
             )
 
-            return False
+            return not maintain_heading
 
         return True
 
