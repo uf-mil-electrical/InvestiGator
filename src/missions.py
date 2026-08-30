@@ -277,53 +277,50 @@ def pirouette(vehicle:VehicleManager):
     time.sleep(2)
     
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Pirouette 1.1".encode())
-    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.5):
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.14):
         print("Failed to pirouette, landing")
         vehicle.land()
         return False
 
-    time.sleep(1)
 
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Pirouette 1.2".encode())
-    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.5):
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.14):
         print("Failed to pirouette, landing")
         vehicle.land()
         return False
 
-    time.sleep(1)
 
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Pirouette 2.1".encode())
-    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.5):
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.14):
         print("Failed to pirouette, landing")
         vehicle.land()
         return False
 
-    time.sleep(1)
 
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Pirouette 2.2".encode())
-    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.5):
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.14):
         print("Failed to pirouette, landing")
         vehicle.land()
         return False
 
-    time.sleep(1)
 
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Pirouette 3.1".encode())
-    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.5):
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.14):
         print("Failed to pirouette, landing")
         vehicle.land()
         return False
 
-    time.sleep(1)
 
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Pirouette 3.2".encode())
-    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.5):
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.14):
         print("Failed to pirouette, landing")
         vehicle.land()
         return False
 
+    time.sleep(2)
+
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving left 15m".encode())
-    if not vehicle.move_body_frd_position(forward_m=0, right_m=-15, timeout_s=15):
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=-15, timeout_s=20):
         print("Failed to move left, landing")
         vehicle.land()
         return False
