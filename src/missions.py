@@ -330,9 +330,9 @@ def pirouette(vehicle:VehicleManager):
     
     time.sleep(2)
 
-    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving up to point 2".encode())
-    if not vehicle.move_body_frd_position(forward_m=-15, right_m=-15, down_m=20, timeout_s=20):
-        print("Failed to move to point 2, landing")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving up home".encode())
+    if not vehicle.move_body_frd_position(forward_m=-15, right_m=15, down_m=20, timeout_s=20):
+        print("Failed to move home, landing")
         vehicle.land()
         return False
 
