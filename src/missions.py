@@ -373,25 +373,33 @@ def test_down_yaw(vehicle:VehicleManager):
     """
 
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Test yaw".encode())
-    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.5):
-        print("Failed to test yaw, landing")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Pirouette 1.1".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.14):
+        print("Failed to pirouette, landing")
         vehicle.land()
         return False
 
-    time.sleep(1)
-    
-    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=5):
-        print("Failed to test yaw, landing")
+
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Pirouette 1.2".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.14):
+        print("Failed to pirouette, landing")
         vehicle.land()
         return False
 
-    """
-    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Test yaw stop".encode())
-    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw=0, yaw_rate=0, maintain_heading=False, timeout_s=10):
-        print("Failed to test yaw stop, landing")
+
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Pirouette 2.1".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.14):
+        print("Failed to pirouette, landing")
         vehicle.land()
         return False
-        """
+
+
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Pirouette 2.2".encode())
+    if not vehicle.move_body_frd_position(forward_m=0, right_m=0, yaw_rate=3.14, maintain_heading=False, timeout_s=3.14):
+        print("Failed to pirouette, landing")
+        vehicle.land()
+        return False
+
     
     time.sleep(2)
     
