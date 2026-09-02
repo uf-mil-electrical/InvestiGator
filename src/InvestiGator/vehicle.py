@@ -300,13 +300,7 @@ class VehicleManager:
         XYZ_POS_YAW = mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE | \
         mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE | \
         mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE & ~mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
-        """
-        XYZ_POS = mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE | \
-        mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE | \
-        mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
 
-        XYZ_POS_YAW = XYZ_POS & ~mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
-        """
         typemask = XYZ_POS
         if not maintain_heading:
             typemask = XYZ_POS_YAW
@@ -366,11 +360,12 @@ class VehicleManager:
         return True
 
 
-    def move_global_gps_relative_alt(self, lat_int: int, lon_int: int, alt_m: int):
+    def move_global_gps_relative_alt(self, lat_int: int, lon_int: int, alt_m: int, timeout_s=30.0):
         """
         Move to the given GPS WGS84 coordinates. Altitude is relative to home position. Maintain current heading.
         """
-        
+        #0b110111111000
+        start_s = time.monotonic()
         typemask = mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE & \
         mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE & \
         mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
@@ -395,6 +390,33 @@ class VehicleManager:
             yaw=0,
             yaw_rate=0
         )
+
+        remaining_s = timeout_s - (time.monotonic() - start_s)
+
+        if not self.wait_for_condition(lambda: self.target_global_reached(target_global_rel_alt), timeout_s=remaining_s):
+            # Stop movement
+            self.mav.set_position_target_global_int_send(
+                time_boot_ms=0,
+                target_system=1,
+                target_component=0,
+                coordinate_frame=mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
+                type_mask=typemask,
+                x = 0,
+                y = 0,
+                z = 0,
+                vx = 0,
+                vy = 0,
+                vz = 0,
+                afx = 0,
+                afy = 0,
+                afz = 0,
+                yaw = 0,
+                yaw_rate = 0
+            )
+
+            return False
+
+        return True
 
     def set_mode(self, target_mode: str | int, timeout_s=5.0):
         """
@@ -451,6 +473,23 @@ class VehicleManager:
         dn = current_ned.x_north_m - target_ned.x_north_m
         de = current_ned.y_east_m - target_ned.y_east_m
         dd = current_ned.z_down_m - target_ned.z_down_m
+
+        distance_m = math.sqrt(dn*dn + de*de + dd*dd)
+
+        return distance_m < threshold_m
+
+    def target_global_reached(self, target_global: MavFrameGlobalRel, threshold_m=0.1) -> bool:
+        """
+        Check if target global position has been reached within threshold_m meters.
+        """
+        current_global = self.location.local_frame
+
+        if current_global is None:
+            return False
+        #lat_int, lon_int, alt_m
+        dn = current_global.lat_int - target_global.lat_int
+        de = current_global.lon_int - target_global.lon_int
+        dd = current_global.alt_m - target_global.alt_m
 
         distance_m = math.sqrt(dn*dn + de*de + dd*dd)
 

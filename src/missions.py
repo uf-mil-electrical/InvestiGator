@@ -489,3 +489,40 @@ def rtl_batt_test(vehicle:VehicleManager):
             return True
 
     return False
+
+
+@mission("GPS_test")
+def gps_test(vehicle:VehicleManager):
+    """
+    This mission will test the GPS capabilities of the drone
+    """
+
+    if not vehicle.set_mode(target_mode = "GUIDED"):
+        return False
+
+    print("Guided mode set")
+
+    if not vehicle.arm():
+        return False
+
+    time.sleep(2)
+    print("Vehicle armed")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 5m".encode())
+
+
+    if not vehicle.takeoff(alt_m = 5):
+        vehicle.land()
+        return False
+
+
+    # vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "".encode())
+    # if not vehicle.move_global_gps_relative_alt(lat_int = 10, lon_int = 10, alt_m = 10):
+    #     print("Failed to GPS, landing")
+    #     vehicle.land()
+    #     return False
+    print(vehicle.location.global_frame)
+
+    print("Movement success! Landing.")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "GPS move success! Landing".encode())
+    
+    return vehicle.set_mode(target_mode = "RTL")
