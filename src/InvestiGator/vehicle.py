@@ -482,7 +482,7 @@ class VehicleManager:
         """
         Check if target global position has been reached within threshold_m meters.
         """
-        current_global = self.location.local_frame
+        current_global = self.location.global_frame
 
         if current_global is None:
             return False
