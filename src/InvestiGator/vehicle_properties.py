@@ -3,6 +3,9 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from collections import namedtuple
 from threading import Lock
 from pymavlink import mavutil
+import math
+
+from . import constants
 
 MavFrameGlobal = namedtuple("MavFrameGlobal", ["lattitude_int", "longitude_int", "altitude_m"])
 MavFrameLocalNed = namedtuple("LocalNED", ["x_north_m", "y_east_m", "z_down_m"])
@@ -26,6 +29,11 @@ class Location:
         self.lon_int = None
         self.alt_m = None
         self.relative_alt_m = None
+        self.vx_cm_s = None
+        self.vy_cm_s = None
+        self.vz_cm_s = None
+        self.hdg_cdeg = None
+        self.alt_ellipsoid_mm = None
 
         self.x_north_m = None
         self.y_east_m = None
@@ -45,6 +53,18 @@ class Location:
                 self.lon_int = message.lon # Divide by 1E7 to convert to degrees
                 self.alt_m = message.alt / 1E3 # Given in mm
                 self.relative_alt_m = message.relative_alt / 1E3  # Given in mm
+                self.vx_cm_s = message.vx  # Ground X speed (latitude, positive north)
+                self.vy_cm_s = message.vy  # Ground Y speed (longitude, positive east)
+                self.vz_cm_s = message.vz  # Ground Z speed (altitude, positive down)
+                self.hdg_cdeg = message.hdg  # Centidegrees, 65535 if unknown
+
+        @vehicle.subscribe(mavlink.MAVLink_gps_raw_int_message.msgname)
+        def update_gps_raw(message: mavlink.MAVLink_gps_raw_int_message):
+            if message.get_srcSystem() != 1:
+                return
+            with self.lock:
+                # Height above WGS84 ellipsoid in mm. MAVLink2 extension field, 0 on MAVLink1.
+                self.alt_ellipsoid_mm = message.alt_ellipsoid
 
         @vehicle.subscribe(mavlink.MAVLink_local_position_ned_message.msgname)
         def update_local_position(message: mavlink.MAVLink_local_position_ned_message):
@@ -87,6 +107,37 @@ class Location:
         with self.lock:
             return MavFrameLocalNed(self.x_north_m, self.y_east_m, self.z_down_m)
     
+    @property
+    def ground_speed_mps(self):
+        """
+        Horizontal speed over ground in m/s from GLOBAL_POSITION_INT velocity.
+        """
+        with self.lock:
+            if self.vx_cm_s is None or self.vy_cm_s is None:
+                return None
+            return math.hypot(self.vx_cm_s, self.vy_cm_s) / 100.0
+
+    @property
+    def heading_deg(self):
+        """
+        Vehicle heading in degrees [0, 360) from GLOBAL_POSITION_INT. None if unknown.
+        """
+        with self.lock:
+            if self.hdg_cdeg is None or self.hdg_cdeg == 65535:  # 65535 is the MAVLink "unknown" sentinel
+                return None
+            return self.hdg_cdeg / 100.0
+
+    @property
+    def altitude_hae_m(self):
+        """
+        Altitude above the WGS84 ellipsoid (HAE) in meters from GPS_RAW_INT. None if not reported.
+        Deliberately no fallback to GLOBAL_POSITION_INT.alt, which is AMSL (a different datum).
+        """
+        with self.lock:
+            if not self.alt_ellipsoid_mm:
+                return None
+            return self.alt_ellipsoid_mm / 1000.0
+
     @property
     def body_frd(self):
         """
@@ -137,6 +188,9 @@ class Status:
         self.errors_count3 = None
         self.errors_count4 = None
 
+        # Extended System State Attributes
+        self.landed_state = None
+
         @vehicle.subscribe(mavlink.MAVLink_heartbeat_message.msgname)
         def subscription_update(message: mavlink.MAVLink_heartbeat_message):
             # TODO: Make this reflect the configurable source system from vehiclemanager
@@ -168,7 +222,15 @@ class Status:
                 self.errors_count2 = message.errors_count2
                 self.errors_count3 = message.errors_count3
                 self.errors_count4 = message.errors_count4
-                
+
+        @vehicle.subscribe(mavlink.MAVLink_extended_sys_state_message.msgname)
+        def update_landed_state(message: mavlink.MAVLink_extended_sys_state_message):
+            if message.get_srcSystem() != 1:
+                return
+            with self.lock:
+                self.landed_state = message.landed_state
+
+
     @property
     def armed(self):
         with self.lock:
@@ -189,5 +251,19 @@ class Status:
             if self.custom_mode is None or self.mode_map_bynumber is None:
                 return None
             return self.mode_map_bynumber.get(self.custom_mode)
+
+    @property
+    def flight_phase(self):
+        """
+        Map MAV_LANDED_STATE to FlightPhase (constants.FLIGHT_PHASE_*).
+        """
+        with self.lock:
+            match self.landed_state:
+                case mavlink.MAV_LANDED_STATE_ON_GROUND:
+                    return constants.FLIGHT_PHASE_GROUNDED
+                case mavlink.MAV_LANDED_STATE_IN_AIR | mavlink.MAV_LANDED_STATE_TAKEOFF | mavlink.MAV_LANDED_STATE_LANDING:
+                    return constants.FLIGHT_PHASE_AIRBORNE
+                case _:
+                    return constants.FLIGHT_PHASE_UNKNOWN
 
 

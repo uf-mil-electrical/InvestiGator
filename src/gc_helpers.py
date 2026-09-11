@@ -1,4 +1,4 @@
-from missions import MISSIONS
+from missions import MISSIONS, MISSIONS_BY_NUMBER
 from InvestiGator import MAVConnection, constants
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from threading import Event
@@ -9,8 +9,8 @@ def build_mission_menu() -> str:
     Return a string menu of available missions.
     """
     menu = "\n--- Select Mission ---\n"
-    for i, mission in enumerate(MISSIONS):
-        menu += f"{i}) {mission.name}\n"
+    for mission in sorted(MISSIONS, key=lambda m: m.mission_number):
+        menu += f"{mission.mission_number}) {mission.name}\n"
     menu += "\n--- System Commands ---\n"
     menu += "p) Ping Companion Computer\n"
     menu += "g) Set mode to GUIDED\n"
@@ -68,7 +68,8 @@ def valid_mission(mission_number: str) -> bool:
         return False
 
     mission_index = int(mission_number)
-    if mission_index < 0 or mission_index >= len(MISSIONS):
+    # A mission number may be reserved in MISSION_NUMBERS_REVERSE without a registered mission.
+    if mission_index not in MISSIONS_BY_NUMBER:
         print(f"Invalid mission number: {mission_number}\n")
         return False
     
@@ -104,7 +105,7 @@ def send_command(connection: MAVConnection, command: int, param1=0.0, param2=0.0
             case constants.MIL_SYSTEM_CMD:
                 command_string = constants.MIL_SYSTEM_CMDS[int(param1)]
             case constants.MIL_MISSION_CMD:
-                command_string = MISSIONS[int(param1)].name
+                command_string = MISSIONS_BY_NUMBER[int(param1)].name
             case _:
                 command_string = mavlink.enums["MAV_CMD"][command].name
         
@@ -137,12 +138,15 @@ def configure_messages(connection: MAVConnection):
     """
     ten_hz_us = (1/10) * 1E6
     five_hz_us = (1/5) * 1E6
+    one_hz_us = 1E6
 
     send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, target_component=0, param1=mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, param2=five_hz_us)
     send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, target_component=0, param1=mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED, param2=five_hz_us)
     send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, target_component=0, param1=mavlink.MAVLINK_MSG_ID_SYS_STATUS, param2=five_hz_us)
     send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, target_component=0, param1=mavlink.MAVLINK_MSG_ID_ATTITUDE, param2=five_hz_us)
     send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, target_component=0, param1=mavlink.MAVLINK_MSG_ID_POSITION_TARGET_LOCAL_NED, param2=five_hz_us)
+    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, target_component=0, param1=mavlink.MAVLINK_MSG_ID_GPS_RAW_INT, param2=one_hz_us)
+    send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, target_component=0, param1=mavlink.MAVLINK_MSG_ID_EXTENDED_SYS_STATE, param2=one_hz_us)
 
 
 MISSION_MENU = build_mission_menu()

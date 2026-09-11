@@ -1,10 +1,11 @@
 from InvestiGator import MAVConnection
 from InvestiGator import VehicleManager
+from InvestiGator import constants
 from InvestiGator.constants import MIL_MISSION_CMD, MIL_STATE_MISSION
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 import argparse
 from config import load_config
-from missions import MISSIONS, accept_mission, send_mission_complete
+from missions import MISSIONS_BY_NAME, accept_mission, send_mission_complete
 from gc_helpers import valid_mission, MISSION_MENU
 from threading import Event
 
@@ -70,13 +71,18 @@ def main():
                     command_event.clear()
                     continue
                 
-                connection.system_status = MIL_STATE_MISSION
-                success = MISSIONS[mission_number].function(vehicle)
-                send_mission_complete(connection, mission_number, success=success)
+                mission_id = constants.MISSION_NUMBERS_REVERSE[mission_number]
+                try:
+                    connection.custom_mode = MISSIONS_BY_NAME[mission_id].rx_task
+                    connection.system_status = MIL_STATE_MISSION
+                    success = MISSIONS_BY_NAME[mission_id].function(vehicle)
+                    send_mission_complete(connection, mission_number, success=success)
+                finally:
+                    connection.custom_mode = constants.RX_TASK_NONE
 
                 vehicle.reset_state()
                 command_event.clear()
-        
+
         else:
             while True:
                 print(MISSION_MENU)
@@ -86,7 +92,12 @@ def main():
                     continue
 
                 mission_number = int(mission_number)
-                success = MISSIONS[mission_number].function(vehicle)
+                mission_id = constants.MISSION_NUMBERS_REVERSE[mission_number]
+                try:
+                    connection.custom_mode = MISSIONS_BY_NAME[mission_id].rx_task
+                    success = MISSIONS_BY_NAME[mission_id].function(vehicle)
+                finally:
+                    connection.custom_mode = constants.RX_TASK_NONE
                 print(f"Mission {mission_number} {'succeeded' if success else 'failed'}.\n")
 
     finally:

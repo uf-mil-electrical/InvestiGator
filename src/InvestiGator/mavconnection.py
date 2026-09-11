@@ -7,7 +7,7 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
 from .pubsub import PublicationManager, SubscriptionManager
-from .constants import MIL_STATE_CONNECTING
+from .constants import MIL_STATE_CONNECTING, RX_TASK_NONE
 
 
 class MAVWriter:
@@ -53,6 +53,9 @@ class MAVConnection:
         self.heartbeat_lock = Lock()
         self.mav_type = mav_type
         self._system_status = MIL_STATE_CONNECTING
+        # RxTask advertised in HEARTBEAT.custom_mode. Only the companion computer changes this.
+        # Must default to RX_TASK_NONE: 0 is TASK_UNKNOWN, which must never be read as standing down.
+        self._custom_mode = RX_TASK_NONE
 
         def mav_sender():
             while self.running.is_set():
@@ -85,7 +88,7 @@ class MAVConnection:
                     type=self.mav_type,
                     autopilot=mavlink.MAV_AUTOPILOT_INVALID,
                     base_mode=0,
-                    custom_mode=0,
+                    custom_mode=self._custom_mode,
                     system_status=self._system_status
                 )
 
@@ -133,6 +136,16 @@ class MAVConnection:
     def system_status(self, system_status):
         with self.heartbeat_lock:
             self._system_status = system_status
+
+    @property
+    def custom_mode(self):
+        with self.heartbeat_lock:
+            return self._custom_mode
+
+    @custom_mode.setter
+    def custom_mode(self, custom_mode):
+        with self.heartbeat_lock:
+            self._custom_mode = custom_mode
 
     def stop_threads(self):
         if self.send_thread.is_alive():

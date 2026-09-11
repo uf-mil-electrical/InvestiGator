@@ -4,7 +4,7 @@ from config import load_config
 import argparse
 from InvestiGator.constants import MIL_SYSTEM_CMD
 import time
-from gc_helpers import valid_mission, wait_for_mission_complete, send_mission_message_wait_ack, MISSIONS, MISSION_MENU, send_system_command
+from gc_helpers import valid_mission, wait_for_mission_complete, send_mission_message_wait_ack, MISSIONS_BY_NUMBER, MISSION_MENU, send_system_command
 from textual_ui import MissionControl
 
 
@@ -76,7 +76,7 @@ def run_cli(connection: MAVConnection):
             print("Mission failed to complete.")
             continue
 
-        print(f"Mission {mission_number}: {MISSIONS[mission_number].name} completed successfully in {time.monotonic()- start_s:.2f} seconds.\n")
+        print(f"Mission {mission_number}: {MISSIONS_BY_NUMBER[mission_number].name} completed successfully in {time.monotonic()- start_s:.2f} seconds.\n")
     
 
 def main():

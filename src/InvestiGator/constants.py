@@ -31,3 +31,35 @@ MIL_SYSTEM_CMDS = {
     MIL_SYSTEM_OVERRIDE: "MIL_SYSTEM_OVERRIDE",
     MIL_SYSTEM_CANCEL: "MIL_SYSTEM_CANCEL"
 }
+
+# Mirrors RxTask in robotx/rx_common.proto. Keep values in sync.
+# Published by the companion computer in HEARTBEAT.custom_mode.
+RX_TASK_UNKNOWN = 0
+RX_TASK_NONE = 1
+RX_TASK_SAFE_PASSAGE = 2
+RX_TASK_INFRA_SURVEY_REPAIR = 3
+RX_TASK_COORDINATED_LOGISTICS = 4
+RX_TASK_DYNAMIC_INCIDENT = 5
+
+# Mirrors FlightPhase in robotx/rx_common.proto. Keep values in sync.
+FLIGHT_PHASE_UNKNOWN = 0
+FLIGHT_PHASE_GROUNDED = 1
+FLIGHT_PHASE_AIRBORNE = 2
+
+# Mission numbers for MIL_MISSION_CMD param1. Append only. Never renumber.
+MISSION_NUMBERS = {
+    "ARUCO_LANDING": 0,
+    "ARM": 1,
+    "SQUARE_TEST": 2,
+    "HOUR_GLASS": 3,
+    "PIROUETTE": 4,
+    "TEST_DOWN_YAW": 5,
+    "WAIT_FOR_CANCEL": 6,
+    "UPS_AND_DOWNS": 7,
+    "RTL_BATT_TEST": 8,
+    "GPS_TEST": 9,
+}
+MISSION_NUMBERS_REVERSE = {v: k for k, v in MISSION_NUMBERS.items()}
+
+if len(MISSION_NUMBERS_REVERSE) != len(MISSION_NUMBERS):
+    raise ImportError("MISSION_NUMBERS contains duplicate mission numbers.")

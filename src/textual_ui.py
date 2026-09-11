@@ -11,7 +11,7 @@ import gc_helpers
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from pymavlink import mavutil
 
-MISSIONS = [(mission[1].name, mission[0]) for mission in enumerate(gc_helpers.MISSIONS)]
+MISSIONS = [(m.name, m.mission_number) for m in gc_helpers.MISSIONS]
 
 STATUS_TABLE_ROWS = [
     "Prearm Status",
@@ -198,12 +198,12 @@ class MissionControl(App):
         self.call_from_thread(self.mission_complete_callback, result, mission_number)
 
     def mission_command_callback(self, result, mission_number):
-        message = f"Mission {mission_number}: {gc_helpers.MISSIONS[mission_number].name} was {"acknowledged" if result else "not acknowledged"}."
+        message = f"Mission {mission_number}: {gc_helpers.MISSIONS_BY_NUMBER[mission_number].name} was {"acknowledged" if result else "not acknowledged"}."
         color = "blue" if result else "red"
         self.log_(message, color)        
     
     def mission_complete_callback(self, result, mission_number):
-        message = f"Mission {mission_number}: {gc_helpers.MISSIONS[mission_number].name} completed {"successfully" if result else "unsuccessfully"}"
+        message = f"Mission {mission_number}: {gc_helpers.MISSIONS_BY_NUMBER[mission_number].name} completed {"successfully" if result else "unsuccessfully"}"
         color = "blue" if result else "red"
         self.log_(message, color)
 
