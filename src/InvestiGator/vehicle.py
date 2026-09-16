@@ -487,11 +487,11 @@ class VehicleManager:
         if current_global is None:
             return False
         #lat_int, lon_int, alt_m
-        dn = current_global.lat_int - target_global.lat_int
-        de = current_global.lon_int - target_global.lon_int
-        dd = current_global.alt_m - target_global.alt_m
+        d = math.sin(math.radians(current_global.lattitude_int - target_global.lattitude_int / 2))**2 + math.cos(math.radians(current_global.lattitude_int)) * math.cos(math.radians(target_global.lattitude_int)) * math.sin(math.radians(current_global.longitude_int - target_global.longitude_int / 2))**2
+        dl = 6371 * 2 * math.atan2(math.sqrt(d), math.sqrt(1 - d))
+        da = current_global.alt_m - target_global.alt_m
 
-        distance_m = math.sqrt(dn*dn + de*de + dd*dd)
+        distance_m = math.sqrt(dl*dl + da*da)
 
         return distance_m < threshold_m
     
