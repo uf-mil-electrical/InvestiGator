@@ -370,7 +370,7 @@ class VehicleManager:
         mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE & \
         mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
 
-        target_global_rel_alt = MavFrameGlobalRel(lat_int, lon_int, alt_m)
+        target_global_rel_pos = MavFrameGlobalRel(lat_int, lon_int, alt_m)
 
         self.mav.set_position_target_global_int_send(
             time_boot_ms=0,
@@ -393,26 +393,26 @@ class VehicleManager:
 
         remaining_s = timeout_s - (time.monotonic() - start_s)
 
-        if not self.wait_for_condition(lambda: self.target_global_reached(target_global_rel_alt), timeout_s=remaining_s):
+        if not self.wait_for_condition(lambda: self.target_global_reached(target_global_rel_pos), timeout_s=remaining_s):
             # Stop movement
-            self.mav.set_position_target_global_int_send(
-                time_boot_ms=0,
-                target_system=1,
-                target_component=0,
-                coordinate_frame=mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
-                type_mask=typemask,
-                x = 0,
-                y = 0,
-                z = 0,
-                vx = 0,
-                vy = 0,
-                vz = 0,
-                afx = 0,
-                afy = 0,
-                afz = 0,
-                yaw = 0,
-                yaw_rate = 0
-            )
+            #self.mav.set_position_target_global_int_send(
+            #    time_boot_ms=0,
+            #    target_system=1,
+            #    target_component=0,
+            #    coordinate_frame=mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
+            #    type_mask=typemask,
+            #    x = 0,
+            #    y = 0,
+            #    z = 0,
+            #    vx = 0,
+            #    vy = 0,
+            #    vz = 0,
+            #    afx = 0,
+            #    afy = 0,
+            #    afz = 0,
+            #    yaw = 0,
+            #    yaw_rate = 0
+            #)
 
             return False
 
@@ -482,17 +482,18 @@ class VehicleManager:
         """
         Check if target global position has been reached within threshold_m meters.
         """
-        current_global = self.location.global_frame
-
+        current_global = self.location.global_frame_relative
         if current_global is None:
             return False
         #lat_int, lon_int, alt_m
-        d = math.sin(math.radians(current_global.lattitude_int - target_global.lattitude_int / 2))**2 + math.cos(math.radians(current_global.lattitude_int)) * math.cos(math.radians(target_global.lattitude_int)) * math.sin(math.radians(current_global.longitude_int - target_global.longitude_int / 2))**2
-        dl = 6371 * 2 * math.atan2(math.sqrt(d), math.sqrt(1 - d))
-        da = current_global.alt_m - target_global.alt_m
+        lat1 = current_global.lattitude_int / 10**7
+        lat2 = target_global.lattitude_int / 10**7
+        lon1 = current_global.longitude_int / 10**7
+        lon2 = target_global.longitude_int / 10**7
+        dl = 2 * 6371 * math.asin(math.sqrt(math.sin(math.radians(lat2-lat1)/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(math.radians(lon2-lon1)/2)**2))
+        da = current_global.altitude_rel_m - target_global.altitude_rel_m
 
         distance_m = math.sqrt(dl*dl + da*da)
-
         return distance_m < threshold_m
     
     def convert_frd_target_to_local_ned_target(self, forward_m, right_m, down_m):
