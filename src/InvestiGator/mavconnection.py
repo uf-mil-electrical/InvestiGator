@@ -81,7 +81,7 @@ class MAVConnection:
         self.send_thread.start()
         self.read_thread.start()
 
-        @self.publish('HEARTBEAT', 1)
+        @self.publish('HEARTBEAT', 2)
         def publish_heartbeat():
             with self.heartbeat_lock:
                 self.mav.heartbeat_send(
