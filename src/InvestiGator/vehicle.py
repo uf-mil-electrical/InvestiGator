@@ -9,7 +9,7 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
 from .mavconnection import MAVConnection
-from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
+from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal, Geofence, LatLng
 from .camera import Camera, MarkerDetection
 from . import constants
 
@@ -38,6 +38,7 @@ class VehicleManager:
 
         self.location = Location(self)
         self.status = Status(self)
+        self.geofence = Geofence()
 
         self.intended_rtl_land = False
 
@@ -643,6 +644,193 @@ class VehicleManager:
         )
         
         self.set_mode("CIRCLE")
+
+    def set_parameter(self, parameter: str, value: float, timeout_s: float = 2.0, retries: int = 3) -> bool:
+        """
+        Write one flight controller parameter and wait for the PARAM_VALUE the autopilot echoes back.
+        PARAM_SET is unacknowledged, so without the echo a dropped packet is indistinguishable from
+        success. Return True once the autopilot reports the value we asked for.
+        """
+        confirmed = Event()
+
+        def on_param_value(message: mavlink.MAVLink_param_value_message):
+            if message.get_srcSystem() != 1:
+                return
+            # pymavlink strips the NUL padding from the 16 byte param_id field and hands back a str.
+            if message.param_id == parameter and math.isclose(message.param_value, value, rel_tol=1E-6, abs_tol=1E-6):
+                confirmed.set()
+
+        self.subscribe(mavlink.MAVLink_param_value_message.msgname)(on_param_value)
+
+        try:
+            for _ in range(retries):
+                confirmed.clear()
+
+                self.mav.param_set_send(
+                    target_system=1,
+                    target_component=mavlink.MAV_COMP_ID_AUTOPILOT1,
+                    param_id=parameter.encode("utf-8"),
+                    param_value=float(value),
+                    param_type=mavlink.MAV_PARAM_TYPE_REAL32
+                )
+
+                if self.wait_for_condition(lambda: confirmed.is_set(), timeout_s=timeout_s):
+                    return True
+
+            print(f"Parameter {parameter} was not confirmed as {value} after {retries} attempts.")
+            return False
+
+        finally:
+            self.unsubscribe(mavlink.MAVLink_param_value_message.msgname, on_param_value)
+
+    def upload_fence_polygon(self, vertices: list[LatLng], timeout_s: float = 5.0, retries: int = 3) -> bool:
+        """
+        Upload vertices to the flight controller as an ArduPilot polygon inclusion fence.
+
+        Uses the mission protocol with MAV_MISSION_TYPE_FENCE: MISSION_COUNT, then one MISSION_ITEM_INT
+        per vertex as the autopilot requests them, then MISSION_ACK. The legacy FENCE_TOTAL/FENCE_POINT
+        message pair is not an option: ArduCopter 4.8 has no handler for it, only the FENCE_STATUS
+        downlink. This replaces whatever fence was stored; there is no partial update.
+
+        vertices must not repeat the first point at the end. ArduPilot closes the polygon itself, and
+        every vertex of a polygon has to carry the same total vertex count in param1.
+        """
+        if not constants.FENCE_MIN_VERTICES <= len(vertices) <= constants.FENCE_MAX_VERTICES:
+            print(f"Refusing to upload a fence of {len(vertices)} vertices. ArduPilot accepts {constants.FENCE_MIN_VERTICES} to {constants.FENCE_MAX_VERTICES}.")
+            return False
+
+        acknowledged = Event()
+        ack_result = None
+
+        def send_vertex(seq: int):
+            if not 0 <= seq < len(vertices):
+                return
+
+            self.mav.mission_item_int_send(
+                target_system=1,
+                target_component=mavlink.MAV_COMP_ID_AUTOPILOT1,
+                seq=seq,
+                frame=mavlink.MAV_FRAME_GLOBAL,
+                command=mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION,
+                current=0,
+                autocontinue=0,
+                param1=len(vertices),
+                param2=0,
+                param3=0,
+                param4=0,
+                x=int(round(vertices[seq].latitude * 1E7)),
+                y=int(round(vertices[seq].longitude * 1E7)),
+                z=0,
+                mission_type=mavlink.MAV_MISSION_TYPE_FENCE
+            )
+
+        def on_request_int(message: mavlink.MAVLink_mission_request_int_message):
+            if message.mission_type == mavlink.MAV_MISSION_TYPE_FENCE:
+                send_vertex(message.seq)
+
+        def on_request(message: mavlink.MAVLink_mission_request_message):
+            # ArduPilot asks with MISSION_REQUEST_INT. Older stacks ask with the float MISSION_REQUEST;
+            # either way the vertex goes back as MISSION_ITEM_INT so no precision is lost.
+            if message.mission_type == mavlink.MAV_MISSION_TYPE_FENCE:
+                send_vertex(message.seq)
+
+        def on_ack(message: mavlink.MAVLink_mission_ack_message):
+            if message.mission_type != mavlink.MAV_MISSION_TYPE_FENCE:
+                return
+            nonlocal ack_result
+            ack_result = message.type
+            acknowledged.set()
+
+        self.subscribe(mavlink.MAVLink_mission_request_int_message.msgname)(on_request_int)
+        self.subscribe(mavlink.MAVLink_mission_request_message.msgname)(on_request)
+        self.subscribe(mavlink.MAVLink_mission_ack_message.msgname)(on_ack)
+
+        try:
+            for _ in range(retries):
+                acknowledged.clear()
+                ack_result = None
+
+                self.mav.mission_count_send(
+                    target_system=1,
+                    target_component=mavlink.MAV_COMP_ID_AUTOPILOT1,
+                    count=len(vertices),
+                    mission_type=mavlink.MAV_MISSION_TYPE_FENCE
+                )
+
+                # One timeout covers the whole request/item exchange, not a single item.
+                if self.wait_for_condition(lambda: acknowledged.is_set(), timeout_s=timeout_s):
+                    if ack_result == mavlink.MAV_MISSION_ACCEPTED:
+                        return True
+
+                    print(f"Fence upload rejected: {mavlink.enums['MAV_MISSION_RESULT'][ack_result].name}.")
+                    return False
+
+            print(f"Fence upload was not acknowledged after {retries} attempts.")
+            return False
+
+        finally:
+            self.unsubscribe(mavlink.MAVLink_mission_request_int_message.msgname, on_request_int)
+            self.unsubscribe(mavlink.MAVLink_mission_request_message.msgname, on_request)
+            self.unsubscribe(mavlink.MAVLink_mission_ack_message.msgname, on_ack)
+
+    def set_course_boundary(self, corners) -> bool:
+        """
+        Take the course boundary for this run, derive the UAV geofence from it, and put that fence
+        live on the flight controller. Single entry point for a received RxCourse boundary.
+
+        Returns False without enabling the fence if the boundary is unusable or the upload fails, and
+        forgets the derived geofence in that case. RunDeclaration reports the geofence we enforce, so
+        a fence that failed to upload must not be left behind for it to declare.
+        """
+        try:
+            self.geofence.set_course_boundary(corners)
+        except ValueError as error:
+            print(f"Rejected course boundary: {error}")
+            return False
+
+        if not self.configure_geofence():
+            self.geofence.clear()
+            return False
+
+        print(f"UAV geofence live: {len(self.geofence.fence_vertices)} vertices, {constants.GEOFENCE_INSET_M} m inside the course boundary, {constants.FENCE_ALT_MAX_M} m AMSL ceiling.")
+        return True
+
+    def configure_geofence(self) -> bool:
+        """
+        Push the derived UAV geofence to the flight controller and enable it.
+
+        self.geofence.set_course_boundary() must have run first, which happens once the RxCourse
+        boundary for this run has been received. Call this before the run, not during one.
+
+        The fence is disabled first so a half-written polygon is never the active boundary, and
+        enabled last once the polygon and every parameter has been confirmed. Any failure leaves
+        FENCE_ENABLE at 0 rather than a fence that only partly describes the course.
+        """
+        vertices = self.geofence.fence_vertices
+
+        if not vertices:
+            print("No UAV geofence to upload. No course boundary has been received.")
+            return False
+
+        if not self.set_parameter("FENCE_ENABLE", 0):
+            return False
+
+        if not self.upload_fence_polygon(vertices):
+            return False
+
+        # FENCE_ALT_MAX_TP defaults to above-home, so the frame is set explicitly for an AMSL ceiling.
+        parameters = (
+            ("FENCE_TYPE", constants.FENCE_TYPE_UAV),
+            ("FENCE_ALT_MAX", constants.FENCE_ALT_MAX_M),
+            ("FENCE_ALT_MAX_TP", constants.FENCE_ALT_FRAME_AMSL),
+            ("FENCE_ACTION", constants.FENCE_ACTION_RTL),
+        )
+
+        for parameter, value in parameters:
+            if not self.set_parameter(parameter, value):
+                return False
+
+        return self.set_parameter("FENCE_ENABLE", 1)
 
     def reset_state(self):
         """

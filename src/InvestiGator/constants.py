@@ -46,6 +46,13 @@ FLIGHT_PHASE_UNKNOWN = 0
 FLIGHT_PHASE_GROUNDED = 1
 FLIGHT_PHASE_AIRBORNE = 2
 
+# Mirrors RobotState in robocommand/common.proto. Keep values in sync.
+# Only STATE_AUTO is mapped for the drone so far. KILLED and MANUAL are not defined yet.
+ROBOT_STATE_UNKNOWN = 0;
+ROBOT_STATE_KILLED = 1;
+ROBOT_STATE_MANUAL = 2;
+ROBOT_STATE_AUTO = 3;
+
 # Mission numbers for MIL_MISSION_CMD param1. Append only. Never renumber.
 MISSION_NUMBERS = {
     "ARUCO_LANDING": 0,
@@ -63,3 +70,28 @@ MISSION_NUMBERS_REVERSE = {v: k for k, v in MISSION_NUMBERS.items()}
 
 if len(MISSION_NUMBERS_REVERSE) != len(MISSION_NUMBERS):
     raise ImportError("MISSION_NUMBERS contains duplicate mission numbers.")
+# ArduCopter fence parameter values. Confirmed against libraries/AC_Fence/AC_Fence.cpp in the local
+# ArduPilot tree at the firmware actually running: ArduCopter V4.8.0-dev (4891432f).
+# FENCE_ACTION and FENCE_TYPE are vehicle- and version-specific. Re-confirm if the Cube is reflashed.
+FENCE_ACTION_RTL = 1  # @Values{Copter}: 1:RTL or Land
+
+FENCE_TYPE_MAX_ALT = 1 << 0  # @Bitmask{Copter}: 0:Max altitude
+FENCE_TYPE_CIRCLE = 1 << 1  # 1:Circle Centered on Home
+FENCE_TYPE_POLYGON = 1 << 2  # 2:Inclusion/Exclusion Circles+Polygons
+FENCE_TYPE_MIN_ALT = 1 << 3  # 3:Min altitude
+# The course boundary polygon plus a ceiling. No circle fence, no min-altitude fence.
+FENCE_TYPE_UAV = FENCE_TYPE_POLYGON | FENCE_TYPE_MAX_ALT
+
+# FENCE_ALT_MAX_TP selects the altitude frame. It defaults to 1 (above home), so it must be set
+# explicitly for the ceiling to mean AMSL.
+FENCE_ALT_FRAME_AMSL = 0  # @Values: 0:Above sea level
+FENCE_ALT_MAX_M = 60.0
+
+# AC_PolyFence_loader rejects a polygon with fewer than 3 vertices, and vertex_count is a uint8.
+# Counts exclude the duplicated closing point, which ArduPilot adds implicitly.
+FENCE_MIN_VERTICES = 3
+FENCE_MAX_VERTICES = 255
+
+# The UAV geofence is the RxCourse boundary shrunk inward by this much, so RoboCommand's
+# "geofence lies within the course boundary" validation passes with margin.
+GEOFENCE_INSET_M = 2.0
