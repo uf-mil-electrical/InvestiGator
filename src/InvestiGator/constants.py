@@ -87,11 +87,6 @@ FENCE_TYPE_UAV = FENCE_TYPE_POLYGON | FENCE_TYPE_MAX_ALT
 FENCE_ALT_FRAME_AMSL = 0  # @Values: 0:Above sea level
 FENCE_ALT_MAX_M = 60.0
 
-# AC_PolyFence_loader rejects a polygon with fewer than 3 vertices, and vertex_count is a uint8.
-# Counts exclude the duplicated closing point, which ArduPilot adds implicitly.
-FENCE_MIN_VERTICES = 3
-FENCE_MAX_VERTICES = 255
-
 # The UAV geofence is the RxCourse boundary shrunk inward by this much, so RoboCommand's
 # "geofence lies within the course boundary" validation passes with margin.
-GEOFENCE_INSET_M = 2.0
+GEOFENCE_INSET_M = 1.0

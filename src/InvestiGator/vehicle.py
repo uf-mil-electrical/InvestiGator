@@ -9,7 +9,8 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
 from .mavconnection import MAVConnection
-from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal, Geofence, LatLng
+from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
+from .geofence import Geofence, LatLng
 from .camera import Camera, MarkerDetection
 from . import constants
 
@@ -695,10 +696,6 @@ class VehicleManager:
         vertices must not repeat the first point at the end. ArduPilot closes the polygon itself, and
         every vertex of a polygon has to carry the same total vertex count in param1.
         """
-        if not constants.FENCE_MIN_VERTICES <= len(vertices) <= constants.FENCE_MAX_VERTICES:
-            print(f"Refusing to upload a fence of {len(vertices)} vertices. ArduPilot accepts {constants.FENCE_MIN_VERTICES} to {constants.FENCE_MAX_VERTICES}.")
-            return False
-
         acknowledged = Event()
         ack_result = None
 
@@ -778,15 +775,11 @@ class VehicleManager:
         Take the course boundary for this run, derive the UAV geofence from it, and put that fence
         live on the flight controller. Single entry point for a received RxCourse boundary.
 
-        Returns False without enabling the fence if the boundary is unusable or the upload fails, and
-        forgets the derived geofence in that case. RunDeclaration reports the geofence we enforce, so
-        a fence that failed to upload must not be left behind for it to declare.
+        Returns False without enabling the fence if the upload fails, and forgets the derived geofence
+        in that case. RunDeclaration reports the geofence we enforce, so a fence that failed to upload
+        must not be left behind for it to declare.
         """
-        try:
-            self.geofence.set_course_boundary(corners)
-        except ValueError as error:
-            print(f"Rejected course boundary: {error}")
-            return False
+        self.geofence.set_course_boundary(corners)
 
         if not self.configure_geofence():
             self.geofence.clear()
