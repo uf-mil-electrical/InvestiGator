@@ -87,6 +87,6 @@ FENCE_TYPE_UAV = FENCE_TYPE_POLYGON | FENCE_TYPE_MAX_ALT
 FENCE_ALT_FRAME_AMSL = 0  # @Values: 0:Above sea level
 FENCE_ALT_MAX_M = 60.0
 
-# The UAV geofence is the RxCourse boundary shrunk inward by this much, so RoboCommand's
-# "geofence lies within the course boundary" validation passes with margin.
-GEOFENCE_INSET_M = 1.0
+# The fence is the course boundary itself. FENCE_MARGIN is how far inside it the autopilot warns and,
+# with the fence bit in AVOID_ENABLE, stops the vehicle. FENCE_ACTION still fires at the boundary.
+FENCE_MARGIN_M = 2.0

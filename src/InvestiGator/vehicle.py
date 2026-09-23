@@ -772,10 +772,10 @@ class VehicleManager:
 
     def set_course_boundary(self, corners) -> bool:
         """
-        Take the course boundary for this run, derive the UAV geofence from it, and put that fence
-        live on the flight controller. Single entry point for a received RxCourse boundary.
+        Take the course boundary for this run and put it live on the flight controller as the UAV
+        geofence. Single entry point for a received RxCourse boundary.
 
-        Returns False without enabling the fence if the upload fails, and forgets the derived geofence
+        Returns False without enabling the fence if the upload fails, and forgets the geofence
         in that case. RunDeclaration reports the geofence we enforce, so a fence that failed to upload
         must not be left behind for it to declare.
         """
@@ -785,12 +785,12 @@ class VehicleManager:
             self.geofence.clear()
             return False
 
-        print(f"UAV geofence live: {len(self.geofence.fence_vertices)} vertices, {constants.GEOFENCE_INSET_M} m inside the course boundary, {constants.FENCE_ALT_MAX_M} m AMSL ceiling.")
+        print(f"UAV geofence live: {len(self.geofence.fence_vertices)} vertices, {constants.FENCE_MARGIN_M} m margin, {constants.FENCE_ALT_MAX_M} m AMSL ceiling.")
         return True
 
     def configure_geofence(self) -> bool:
         """
-        Push the derived UAV geofence to the flight controller and enable it.
+        Push the UAV geofence to the flight controller and enable it.
 
         self.geofence.set_course_boundary() must have run first, which happens once the RxCourse
         boundary for this run has been received. Call this before the run, not during one.
@@ -817,6 +817,7 @@ class VehicleManager:
             ("FENCE_ALT_MAX", constants.FENCE_ALT_MAX_M),
             ("FENCE_ALT_MAX_TP", constants.FENCE_ALT_FRAME_AMSL),
             ("FENCE_ACTION", constants.FENCE_ACTION_RTL),
+            ("FENCE_MARGIN", constants.FENCE_MARGIN_M),
         )
 
         for parameter, value in parameters:
