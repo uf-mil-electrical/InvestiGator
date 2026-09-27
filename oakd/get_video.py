@@ -23,14 +23,14 @@ import argparse
 from datetime import datetime
 from pymavlink import mavutil
 
-SAVE_DIR = "captured_frames"          # Directory where training images are saved
+SAVE_DIR = "captured_frames"          
 CAM_A_SOCKET = dai.CameraBoardSocket.CAM_A
-DISPLAY_SCALE = 0.5                   # Scale factor for the live preview window
-CAPTURE_COOLDOWN_S = 0.5              # Minimum seconds between captures (debounce)
+DISPLAY_SCALE = 0.5                   
+CAPTURE_COOLDOWN_S = 0.5              
 
-# MAVLink command that triggers capture.
-# DO_DIGICAM_CONTROL (203) is the standard ArduPilot camera shutter command.
-TRIGGER_CMD = mavutil.mavlink.MAV_CMD_DO_DIGICAM_CONTROL  # 203
+# MAVLink command to trigger camera capture
+# DO_DIGICAM_CONTROL (203) = ArduPilot camera shutter
+TRIGGER_CMD = mavutil.mavlink.MAV_CMD_DO_DIGICAM_CONTROL  
 
 
 
@@ -66,7 +66,7 @@ def mavlink_listener(connection_string: str) -> None:
 
         if msg.get_type() == "COMMAND_LONG":
             if msg.command == TRIGGER_CMD:
-                # param1 == 1 means "shoot"
+                #1 means "shoot"
                 triggered = (msg.param1 == 1)
 
         elif msg.get_type() == "DO_DIGICAM_CONTROL":
@@ -156,7 +156,7 @@ def main(connection_string: str) -> None:
                 )
                 cv2.imshow(name, preview)
 
-            # ---------- Handle capture trigger ----------
+            # Capture trigger event
             # Trigger sources: MAVLink event OR keyboard 'c'
             key = cv2.waitKey(1) & 0xFF
             keyboard_trigger = (key == ord("c"))
