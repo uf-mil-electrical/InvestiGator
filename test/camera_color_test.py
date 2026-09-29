@@ -2,8 +2,17 @@ import cv2
 import numpy as np
 import time
 
-cap = cv2.VideoCapture(0)
+from picamera2 import Picamera2
 
+picam2 = Picamera2()
+
+picam2.configure(
+    picam2.create_preview_configuration(
+        main={"size": (1280, 720), "format": "RGB888"}
+    )
+)
+
+picam2.start()
 last_blue = False
 candidate_blue = False
 candidate_blue_start = time.monotonic()
@@ -23,38 +32,15 @@ green_start = None
 green_changes = []
 
 while True:
-    ret, frame = cap.read()
+    frame = picam2.capture_array()
 
-    if not ret:
-        break
-
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    height, width = frame.shape[:2]
-    h, s, v = hsv[height // 2, width // 2]
-    text = f"H:{h} S:{s} V:{v}"
-
-    text_size = cv2.getTextSize(
-        text,
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
-        2
-    )[0]
-
-    cv2.putText(
-        frame,
-        text,
-        (width - text_size[0] - 20, height - 20),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
-        (255, 255, 255),
-        2
-    )
-    
-    green_min = np.array([35, 80, 80])
-    green_max = np.array([85, 255, 255])
+    hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
 
     blue_min = np.array([90, 80, 80])
     blue_max = np.array([135, 255, 255])
+
+    green_min = np.array([35, 80, 80])
+    green_max = np.array([85, 255, 255])
 
     red_min1 = np.array([0, 80, 80])
     red_max1 = np.array([10, 255, 255])
@@ -154,13 +140,10 @@ while True:
     cv2.putText(frame, green_label, (30, 130),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-    cv2.imshow("Webcam", frame)
-    cv2.imshow("Blue Mask", blue_mask)
-    cv2.imshow("Red Mask", red_mask)
-    cv2.imshow("Green Mask", green_mask)
+    cv2.imshow("Camera", frame)
 
     if cv2.waitKey(1) == ord("q"):
         break
 
-cap.release()
+picam2.stop()
 cv2.destroyAllWindows()
