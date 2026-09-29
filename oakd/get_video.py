@@ -154,7 +154,7 @@ def main(connection_string: str) -> None:
                     fx=DISPLAY_SCALE,
                     fy=DISPLAY_SCALE,
                 )
-                cv2.imshow(name, preview)
+                #cv2.imshow(name, preview)
 
             # Capture trigger event
             # Trigger sources: MAVLink event OR keyboard 'c'

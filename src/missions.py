@@ -121,7 +121,7 @@ def square_test(vehicle:VehicleManager):
         vehicle.land()
         return False
 
-    print("Vehicle at altitude = 10m")
+    print("Vehicle at altitude = 3m")
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Vehicle at altitude = 3m".encode())
 
     time.sleep(2)
