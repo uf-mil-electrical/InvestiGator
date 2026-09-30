@@ -1,18 +1,18 @@
 import cv2
 import numpy as np
 import time
-
 from picamera2 import Picamera2
 
 picam2 = Picamera2()
 
 picam2.configure(
     picam2.create_preview_configuration(
-        main={"size": (1280, 720), "format": "RGB888"}
+        main={"size": (870, 480), "format": "RGB888"}
     )
 )
 
 picam2.start()
+
 last_blue = False
 candidate_blue = False
 candidate_blue_start = time.monotonic()
@@ -34,7 +34,40 @@ green_changes = []
 while True:
     frame = picam2.capture_array()
 
-    hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+    height, width = frame.shape[:2]
+    center_x = width // 2
+    center_y = height // 2
+
+    h, s, v = hsv[center_y, center_x]
+
+    cv2.circle(
+        frame,
+        (center_x, center_y),
+        5,
+        (255, 255, 255),
+        -1
+    )
+
+    text = f"H:{h} S:{s} V:{v}"
+
+    text_size = cv2.getTextSize(
+        text,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        2
+    )[0]
+
+    cv2.putText(
+        frame,
+        text,
+        (width - text_size[0] - 20, height - 20),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 255, 255),
+        2
+    )
 
     blue_min = np.array([90, 80, 80])
     blue_max = np.array([135, 255, 255])
@@ -44,16 +77,17 @@ while True:
 
     red_min1 = np.array([0, 80, 80])
     red_max1 = np.array([10, 255, 255])
+
     red_min2 = np.array([170, 80, 80])
     red_max2 = np.array([179, 255, 255])
 
     blue_mask = cv2.inRange(hsv, blue_min, blue_max)
 
+    green_mask = cv2.inRange(hsv, green_min, green_max)
+
     red_mask1 = cv2.inRange(hsv, red_min1, red_max1)
     red_mask2 = cv2.inRange(hsv, red_min2, red_max2)
     red_mask = red_mask1 | red_mask2
-
-    green_mask = cv2.inRange(hsv, green_min, green_max)
 
     blue = cv2.countNonZero(blue_mask) / blue_mask.size > 0.02
     red = cv2.countNonZero(red_mask) / red_mask.size > 0.02
@@ -131,16 +165,40 @@ while True:
     else:
         green_label = ""
 
-    cv2.putText(frame, blue_label, (30, 50),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+    cv2.putText(
+        frame,
+        blue_label,
+        (30, 50),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1,
+        (255, 0, 0),
+        2
+    )
 
-    cv2.putText(frame, red_label, (30, 90),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+    cv2.putText(
+        frame,
+        red_label,
+        (30, 90),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1,
+        (0, 0, 255),
+        2
+    )
 
-    cv2.putText(frame, green_label, (30, 130),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    cv2.putText(
+        frame,
+        green_label,
+        (30, 130),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1,
+        (0, 255, 0),
+        2
+    )
 
     cv2.imshow("Camera", frame)
+    cv2.imshow("Blue Mask", blue_mask)
+    cv2.imshow("Red Mask", red_mask)
+    cv2.imshow("Green Mask", green_mask)
 
     if cv2.waitKey(1) == ord("q"):
         break
