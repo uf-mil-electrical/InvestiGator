@@ -65,6 +65,7 @@ MISSION_NUMBERS = {
     "UPS_AND_DOWNS": 7,
     "RTL_BATT_TEST": 8,
     "GPS_TEST": 9,
+    "GEOFENCE_TEST": 10,
 }
 MISSION_NUMBERS_REVERSE = {v: k for k, v in MISSION_NUMBERS.items()}
 
@@ -86,6 +87,8 @@ FENCE_TYPE_UAV = FENCE_TYPE_POLYGON | FENCE_TYPE_MAX_ALT
 # explicitly for the ceiling to mean AMSL.
 FENCE_ALT_FRAME_AMSL = 0  # @Values: 0:Above sea level
 FENCE_ALT_MAX_M = 60.0
+# SITL's default home (Canberra) is 584 m AMSL, so in sim the ceiling keeps the same 60 m of headroom above it.
+FENCE_ALT_MAX_SIM_M = 644.0
 
 # The fence is the course boundary itself. FENCE_MARGIN is how far inside it the autopilot warns and,
 # with the fence bit in AVOID_ENABLE, stops the vehicle. FENCE_ACTION still fires at the boundary.

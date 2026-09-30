@@ -19,7 +19,7 @@ class VehicleManager:
     Represents properties of a vehicle and handles communication with it.
     """
 
-    def __init__(self, mav_connection: MAVConnection, baud=115200):
+    def __init__(self, mav_connection: MAVConnection, baud=115200, sim=False):
         self.mav_connection = mav_connection
 
         self.cancel_mission_event = Event()
@@ -40,6 +40,7 @@ class VehicleManager:
         self.location = Location(self)
         self.status = Status(self)
         self.geofence = Geofence()
+        self.fence_alt_max_m = constants.FENCE_ALT_MAX_SIM_M if sim else constants.FENCE_ALT_MAX_M
 
         self.intended_rtl_land = False
 
@@ -785,7 +786,7 @@ class VehicleManager:
             self.geofence.clear()
             return False
 
-        print(f"UAV geofence live: {len(self.geofence.fence_vertices)} vertices, {constants.FENCE_MARGIN_M} m margin, {constants.FENCE_ALT_MAX_M} m AMSL ceiling.")
+        print(f"UAV geofence live: {len(self.geofence.fence_vertices)} vertices, {constants.FENCE_MARGIN_M} m margin, {self.fence_alt_max_m} m AMSL ceiling.")
         return True
 
     def configure_geofence(self) -> bool:
@@ -814,7 +815,7 @@ class VehicleManager:
         # FENCE_ALT_MAX_TP defaults to above-home, so the frame is set explicitly for an AMSL ceiling.
         parameters = (
             ("FENCE_TYPE", constants.FENCE_TYPE_UAV),
-            ("FENCE_ALT_MAX", constants.FENCE_ALT_MAX_M),
+            ("FENCE_ALT_MAX", self.fence_alt_max_m),
             ("FENCE_ALT_MAX_TP", constants.FENCE_ALT_FRAME_AMSL),
             ("FENCE_ACTION", constants.FENCE_ACTION_RTL),
             ("FENCE_MARGIN", constants.FENCE_MARGIN_M),

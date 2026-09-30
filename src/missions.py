@@ -2,10 +2,12 @@ from InvestiGator import VehicleManager
 from InvestiGator import MAVConnection
 from InvestiGator import constants
 from InvestiGator.constants import MIL_MISSION_CMD
+from InvestiGator.geofence import LatLng
 from dataclasses import dataclass
 from typing import Callable
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 import time
+import math
 
 
 @dataclass
@@ -543,3 +545,28 @@ def gps_test(vehicle:VehicleManager):
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "GPS move success! Landing".encode())
     
     return vehicle.set_mode(target_mode = "RTL")
+
+
+@mission("GEOFENCE_TEST")
+def geofence_test(vehicle: VehicleManager):
+    """
+    Put a 10 m square fence centred on the drone live on the flight controller, through the same
+    set_course_boundary() path an RxCourse boundary will use. Test boundary only. Does not arm or fly.
+    Read it back from the ground station with test_protocols.py.
+    """
+    here = vehicle.location.global_frame
+
+    if not here.lattitude_int or not here.longitude_int:
+        print("No position fix. Cannot place a test fence.")
+        return False
+
+    lat, lon = here.lattitude_int / 1E7, here.longitude_int / 1E7
+    half_side_m = 5.0
+    m_per_deg_lat = 111_320.0  # Near enough for a test square
+    d_lat = half_side_m / m_per_deg_lat
+    d_lon = half_side_m / (m_per_deg_lat * math.cos(math.radians(lat)))
+
+    corners = [LatLng(lat - d_lat, lon - d_lon), LatLng(lat - d_lat, lon + d_lon),
+               LatLng(lat + d_lat, lon + d_lon), LatLng(lat + d_lat, lon - d_lon)]
+
+    return vehicle.set_course_boundary(corners + corners[:1])

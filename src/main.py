@@ -10,6 +10,7 @@ from gc_helpers import valid_mission, MISSION_MENU
 from threading import Event
 
 interactive = False
+sim = False
 
 def initialize() -> MAVConnection:
 
@@ -25,6 +26,8 @@ def initialize() -> MAVConnection:
         interactive = True
 
     if args.sim:
+        global sim
+        sim = True
         address = config["simulation"].get("companion_computer")
     else:
         address = config["hardware"].get("flight_controller")
@@ -42,7 +45,7 @@ def main():
     connection = initialize()
     print("Connection made!")
 
-    vehicle = VehicleManager(mav_connection=connection)
+    vehicle = VehicleManager(mav_connection=connection, sim=sim)
 
     command_event = Event()
     mission_number = -1
