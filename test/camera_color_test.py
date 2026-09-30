@@ -50,7 +50,7 @@ while True:
         -1
     )
 
-    text = "H:{h} S:{s} V:{v}"
+    text = f"H:{h} S:{s} V:{v}"
 
     text_size = cv2.getTextSize(
         text,
@@ -70,7 +70,7 @@ while True:
     )
 
     blue_min = np.array([100, 150, 110])
-    blue_max = np.array([135, 255, 150])
+    blue_max = np.array([135, 255, 220])
 
     green_min = np.array([40, 80, 80])
     green_max = np.array([85, 255, 255])
