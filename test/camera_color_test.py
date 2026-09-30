@@ -50,7 +50,7 @@ while True:
         -1
     )
 
-    text = f"H:{h} S:{s} V:{v}"
+    text = "H:{h} S:{s} V:{v}"
 
     text_size = cv2.getTextSize(
         text,
@@ -69,17 +69,17 @@ while True:
         2
     )
 
-    blue_min = np.array([90, 80, 80])
-    blue_max = np.array([135, 255, 255])
+    blue_min = np.array([100, 150, 110])
+    blue_max = np.array([135, 255, 150])
 
-    green_min = np.array([35, 80, 80])
+    green_min = np.array([40, 80, 80])
     green_max = np.array([85, 255, 255])
 
-    red_min1 = np.array([0, 80, 80])
+    red_min1 = np.array([0, 100, 80])
     red_max1 = np.array([10, 255, 255])
 
-    red_min2 = np.array([170, 80, 80])
-    red_max2 = np.array([179, 255, 255])
+    red_min2 = np.array([160, 150, 120])
+    red_max2 = np.array([190, 255, 255])
 
     blue_mask = cv2.inRange(hsv, blue_min, blue_max)
 
