@@ -250,8 +250,7 @@ class Status:
             return bool(self.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
     
     def disarmed(self):
-        with self.lock:
-            return not self.armed()
+        return not self.armed
 
     @property
     def prearmed(self):
@@ -285,8 +284,8 @@ class Status:
     def robot_state(self):
         """
         RobotX Heartbeat.state from the latest autopilot heartbeat. Recomputed on every read, never latched.
-        KILLED when the autopilot heartbeat is stale, or when disarmed outside a pilot mode.
-        MANUAL when the flight mode is one a pilot flies. AUTO when armed and in GUIDED.
+        KILLED when the autopilot heartbeat is stale, or when disarmed in any mode, including at power-on.
+        MANUAL when armed in a mode a pilot flies. AUTO when armed and in GUIDED.
         Armed in any other autopilot-flown mode (AUTO, RTL, LAND) falls back to MANUAL, so UNKNOWN is never reported.
         STATE_AUTO gates RunStart, so it must not be reported early.
         """
@@ -295,8 +294,8 @@ class Status:
             armed = self.base_mode is not None and bool(self.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
             mode = self.mode_map_bynumber.get(self.custom_mode)
 
-            # Checked first so a kill always wins: stale autopilot data, or disarmed outside a pilot mode.
-            if not fresh or (not armed and mode not in MANUAL_MODES):
+            # Checked first so a kill always wins: stale autopilot data, or disarmed.
+            if not fresh or not armed:
                 return constants.ROBOT_STATE_KILLED
 
             if mode in MANUAL_MODES:

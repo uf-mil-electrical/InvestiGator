@@ -14,6 +14,8 @@ from .geofence import Geofence, LatLng
 from .camera import Camera, MarkerDetection
 from . import constants
 
+M_PER_DEG_LAT = 111_320.0
+
 class VehicleManager:
     """
     Represents properties of a vehicle and handles communication with it.
@@ -401,16 +403,17 @@ class VehicleManager:
         remaining_s = timeout_s - (time.monotonic() - start_s)
 
         if not self.wait_for_condition(lambda: self.target_global_reached(target_global_rel_alt), timeout_s=remaining_s):
-            # Stop movement
+            # Stop movement: hold the current position. Zeros here would be a target at lat 0, lon 0.
+            here = self.location.global_frame_relative
             self.mav.set_position_target_global_int_send(
                 time_boot_ms=0,
                 target_system=1,
                 target_component=0,
                 coordinate_frame=mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
                 type_mask=typemask,
-                x = 0,
-                y = 0,
-                z = 0,
+                lat_int=here.lattitude_int,
+                lon_int=here.longitude_int,
+                alt=here.altitude_rel_m,
                 vx = 0,
                 vy = 0,
                 vz = 0,
@@ -487,16 +490,17 @@ class VehicleManager:
 
     def target_global_reached(self, target_global: MavFrameGlobalRel, threshold_m=0.1) -> bool:
         """
-        Check if target global position has been reached within threshold_m meters.
+        Check if target global position (altitude relative to home) has been reached within threshold_m meters.
         """
-        current_global = self.location.global_frame
+        current = self.location.global_frame_relative
 
-        if current_global is None:
+        if current.lattitude_int is None or current.longitude_int is None or current.altitude_rel_m is None:
             return False
-        #lat_int, lon_int, alt_m
-        dn = current_global.lat_int - target_global.lat_int
-        de = current_global.lon_int - target_global.lon_int
-        dd = current_global.alt_m - target_global.alt_m
+
+        # lat/lon are degrees * 1E7. Equirectangular is close enough over a course.
+        dn = (current.lattitude_int - target_global.lattitude_int) / 1E7 * M_PER_DEG_LAT
+        de = (current.longitude_int - target_global.longitude_int) / 1E7 * M_PER_DEG_LAT * math.cos(math.radians(current.lattitude_int / 1E7))
+        dd = current.altitude_rel_m - target_global.altitude_rel_m
 
         distance_m = math.sqrt(dn*dn + de*de + dd*dd)
 
