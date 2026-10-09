@@ -218,8 +218,8 @@ def main():
         EXPECTED_PARAMS["FENCE_ALT_MAX"] = constants.FENCE_ALT_MAX_SIM_M
 
     config = load_config()
-    address = config["simulation"].get("ground_control") if args.sim else config["hardware"].get("ground_control")
-    baud = config["hardware"].get("ground_control_baud")
+    address = config["simulation"].get("ground_control") if args.sim else config["hardware"].get("flight_controller")
+    baud = config["hardware"].get("flight_controller_baud")
 
     print(f"Connecting with address: {address}")
     connection = MAVConnection(address, mav_type=mavlink.MAV_TYPE_GCS, source_system=254, baud=baud)
