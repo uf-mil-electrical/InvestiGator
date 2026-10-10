@@ -61,6 +61,10 @@ class MissionControl(App):
         self.connection = connection
         self.mode_map = mavutil.mode_mapping_bynumber(mavlink.MAV_TYPE_QUADROTOR)
 
+        self.lat_m = None
+        self.lon_m = None
+        self.relative_alt_m = None
+
         self.last_companion_heartbeat: float = 0.0
         self.last_drone_heartbeat: float = 0.0
 
@@ -147,6 +151,10 @@ class MissionControl(App):
     def global_position_int_callback(self, message: mavlink.MAVLink_global_position_int_message):
         alt_rel_m = f"{message.relative_alt / 1000:.2f}" # Given in mm
         heading_deg = f"{message.hdg / 100:.2f}" # Given in cdeg
+
+        self.lat_m = message.lat #only used for emergency button, gets the current lat and lon
+        self.lon_m = message.lon
+        self.relative_alt_m = message.relative_alt / 1E3 #divide to get into meters
 
         table = self.query_one(DataTable)
         table.update_cell(row_key="Relative Altitude", column_key="value", value=alt_rel_m)
@@ -319,7 +327,7 @@ class MissionControl(App):
             self.send_command(command=constants.MIL_SYSTEM_CMD, param1=0)
 
         elif event.button.id == "send_em_button":
-            self.send_command(command=constants.MIL_SYSTEM_CMD, param1=0)
+            self.send_command(command=31013, param1=4, param2=self.lat_m +1000, param3=self.lon_m+1000, param4=self.relative_alt_m + 0)
             
     def on_select_changed(self, event: Select.Changed):
         select = self.query_one(Select)
