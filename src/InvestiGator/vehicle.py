@@ -25,8 +25,8 @@ class VehicleManager:
         self.uncontrolled_event = Event()
         self.uncontrolled_event.set()
 
-        self.lastknown_state = constants.MIL_STATE_CONNECTING
-        self.lastknown_pos = self.location.global_frame_relative #should be in lat, lon, rel alt order
+        #self.lastknown_state = constants.MIL_STATE_CONNECTING
+        #self.lastknown_pos = self.location.global_frame_relative #should be in lat, lon, rel alt order
 
         self.detection_queue: Queue[MarkerDetection] = Queue()
         self.camera = Camera(self.detection_queue, preview=False)
@@ -41,6 +41,10 @@ class VehicleManager:
 
         self.location = Location(self)
         self.status = Status(self)
+
+
+        self.lastknown_state = constants.MIL_STATE_CONNECTING
+        self.lastknown_pos = self.location.global_frame_relative #should be in lat, lon, rel alt order
 
         self.intended_rtl_land = False
 

@@ -4,7 +4,7 @@ from InvestiGator.constants import MIL_MISSION_CMD
 from dataclasses import dataclass
 from typing import Callable
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
-from gc_helpers import send_command
+#from gc_helpers import send_command
 import time
 
 @dataclass
@@ -535,6 +535,7 @@ def em_test(vehicle:VehicleManager):
     """
     This mission will test the emergency responce capabilities of the drone
     """
+    from gc_helpers import send_command
 
     if not vehicle.set_mode(target_mode = "GUIDED"):
         return False
@@ -556,14 +557,14 @@ def em_test(vehicle:VehicleManager):
     target_gps = vehicle.location.global_frame
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving to start pos".encode())
     print(vehicle.location.global_frame_relative)
-    if not vehicle.move_global_gps_relative_alt(lat_int = vehicle.location.global_frame_relative[0] + 270, lon_int = vehicle.location.global_frame_relative[1] - 270, alt_m = 0, timeout_s=10):
+    if not vehicle.move_global_gps_relative_alt(lat_int = vehicle.location.global_frame_relative[0] + 270, lon_int = vehicle.location.global_frame_relative[1] - 270, alt_m = 5, timeout_s=10):
         print("Failed to move into posistion, landing")
         vehicle.land()
         return False
 
-    send_command(connection=vehicle.mac_connection, command=31013, param1=4, param2=vehicle.location.global_frame_relative[0]-1000, param3=vehicle.location.global_frame_relative[1]-1000, param4=vehicle.location.global_frame_relative[2], target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER)
+    send_command(connection=vehicle.mav_connection, command=31013, param1=4, param2=vehicle.location.global_frame_relative[0]-1000, param3=vehicle.location.global_frame_relative[1]-1000, param4=vehicle.location.global_frame_relative[2] + 2, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER)
     time.sleep(5)
-    send_command(connection=vehicle.mac_connection, command=31013, param1=5, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER)
+    send_command(connection=vehicle.mav_connection, command=31013, param1=5, target_component=mavlink.MAV_COMP_ID_ONBOARD_COMPUTER)
 
     print("Movement success! Landing.")
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Emergency respond success! Return to launch".encode())
