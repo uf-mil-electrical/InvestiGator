@@ -25,6 +25,9 @@ class VehicleManager:
         self.uncontrolled_event = Event()
         self.uncontrolled_event.set()
 
+        self.lastknown_state = constants.MIL_STATE_CONNECTING
+        self.lastknown_pos = self.location.global_frame_relative #should be in lat, lon, rel alt order
+
         self.detection_queue: Queue[MarkerDetection] = Queue()
         self.camera = Camera(self.detection_queue, preview=False)
 
@@ -61,6 +64,8 @@ class VehicleManager:
         param1 = 1: Set mode to GUIDED.
         param1 = 2: Set uncontrolled
         param1 = 3: Set cancel mission
+        param1 = 4: Respond to emergency
+        param1 = 5: Return to mission
         """
         if message.command == constants.MIL_SYSTEM_CMD:
             match message.param1:
@@ -86,6 +91,19 @@ class VehicleManager:
                     print("Received system command: Cancel mission.")
                     if self.mav_connection.system_status == constants.MIL_STATE_MISSION:
                         self.cancel_mission_event.set()
+
+                case constants.MIL_SYSTEM_EM_RESPOND:
+                    print("Recieved system command: Emergency Respond.")
+                    self.lastknown_state = self.mav_connection_system_status
+                    self.lastknown_pos = self.location.global_frame_relative
+                    self.mav_connection_system_status = constants.MIL_STATE_EMERGENCY
+                    Thread(target=self.move_global_gps_relative_alt, args=(message.param2, message.param3, message.param4,), daemon=True).start()
+                    print("Ready for further instructions.")
+
+                case constants.MIL_SYSTEM_EM_RETURN:
+                    print("Recieved all clear, returning to normal operations.")
+                    Thread(target=self.move_global_gps_relative_alt, args=(self.lastknown_pos[0], self.lastknown_pos[1], self.lastknown_pos[2],), daemon=True).start()
+                    self.mav_connection_system_status = self.lastknown_state
             
             if message.param1 in constants.MIL_SYSTEM_CMDS:
                 print("Sending command ack")
