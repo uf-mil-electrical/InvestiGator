@@ -224,6 +224,8 @@ class MissionControl(App):
                     system_command = "Uncontrolled"
                 case constants.MIL_SYSTEM_CANCEL:
                     system_command = "Cancel Mission"
+                case constants.MIL_SYSTEM_EM_RESPOND:
+                    system_command = "Respond"
 
             if system_command is None:
                 message = f"Unknown command {"acknowledged" if result else "failed"}: (Command: {command}, param1: {param1}"
@@ -286,6 +288,8 @@ class MissionControl(App):
                             yield Button(id="set_guided_button", label="Enable Guided", variant="success")
                         with Center():
                             yield Button(id="send_ping_button", label="Send Pi Ping", variant="primary")
+                        with Center():
+                            yield Button(id="send_em_button", label="Respond to emergency", variant="primary")
 
             
             with Vertical(id="log_panel", classes="panel") as log_panel:
@@ -312,6 +316,9 @@ class MissionControl(App):
             self.send_command(command=constants.MIL_SYSTEM_CMD, param1=1)
 
         elif event.button.id == "send_ping_button":
+            self.send_command(command=constants.MIL_SYSTEM_CMD, param1=0)
+
+        elif event.button.id == "send_em_button":
             self.send_command(command=constants.MIL_SYSTEM_CMD, param1=0)
             
     def on_select_changed(self, event: Select.Changed):
