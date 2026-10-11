@@ -43,7 +43,7 @@ class VehicleManager:
         self.status = Status(self)
 
 
-        self.lastknown_state = constants.MIL_STATE_CONNECTING
+        self.lastknown_state = constants.MIL_STATE_STANDBY
         self.lastknown_pos = self.location.global_frame_relative #should be in lat, lon, rel alt order
 
         self.intended_rtl_land = False
@@ -98,16 +98,18 @@ class VehicleManager:
 
                 case constants.MIL_SYSTEM_EM_RESPOND:
                     print("Recieved system command: Emergency Respond.")
-                    self.lastknown_state = self.mav_connection_system_status
+                    if self.mav_connection.system_status == constants.MIL_STATE_MISSION:
+                        self.mav_connection_system_status = constants.MIL_STATE_EMERGENCY
+                        self.cancel_mission_event.set()
                     self.lastknown_pos = self.location.global_frame_relative
                     self.mav_connection_system_status = constants.MIL_STATE_EMERGENCY
-                    Thread(target=self.move_global_gps_relative_alt, args=(message.param2, message.param3, message.param4,), daemon=True).start()
+                    Thread(target=self.move_global_gps_relative_alt, args=(int(message.param2), int(message.param3), int(message.param4), 20,), daemon=True).start()
                     print("Ready for further instructions.")
 
                 case constants.MIL_SYSTEM_EM_RETURN:
                     print("Recieved all clear, returning to normal operations.")
                     Thread(target=self.move_global_gps_relative_alt, args=(self.lastknown_pos[0], self.lastknown_pos[1], self.lastknown_pos[2],), daemon=True).start()
-                    self.mav_connection_system_status = self.lastknown_state
+                    #self.mav_connection_system_status = self.lastknown_state
             
             if message.param1 in constants.MIL_SYSTEM_CMDS:
                 print("Sending command ack")
@@ -141,7 +143,7 @@ class VehicleManager:
         manual_control = mode in self.MANUAL_MODES
         unintended_landing = mode in self.LANDING_MODES and not self.intended_rtl_land
 
-        if (manual_control or unintended_landing) and not self.mav_connection.system_status == constants.MIL_STATE_INITIAL_OVERRIDE and not self.mav_connection.system_status == constants.MIL_STATE_OVERRIDE:
+        if (manual_control or unintended_landing) and not self.mav_connection.system_status == constants.MIL_STATE_INITIAL_OVERRIDE and not self.mav_connection.system_status == constants.MIL_STATE_OVERRIDE and not self.mav_connection.system_status == constants.MIL_STATE_EMERGENCY:
             print(f"Manual mode: {manual_control}, Mode String: {mode}")
             print(f"Intended Land: {self.intended_rtl_land}")
             print(f"System Status: {self.mav_connection.system_status}")
