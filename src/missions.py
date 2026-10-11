@@ -557,7 +557,7 @@ def em_test(vehicle:VehicleManager):
     target_gps = vehicle.location.global_frame
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Moving to start pos".encode())
     print(vehicle.location.global_frame_relative)
-    if not vehicle.move_global_gps_relative_alt(lat_int = vehicle.location.global_frame_relative[0] + 270, lon_int = vehicle.location.global_frame_relative[1] - 270, alt_m = 5, timeout_s=10):
+    if not vehicle.move_global_gps_relative_alt(lat_int = vehicle.location.global_frame_relative[0] + 500, lon_int = vehicle.location.global_frame_relative[1] - 500, alt_m = 5, timeout_s=10):
         return False
 
 
