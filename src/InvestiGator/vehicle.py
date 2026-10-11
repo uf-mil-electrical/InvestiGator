@@ -506,18 +506,20 @@ class VehicleManager:
         """
         Check if target global position has been reached within threshold_m meters.
         """
-        current_global = self.location.global_frame_relative
-        if current_global is None:
-            return False
-        #lat_int, lon_int, alt_m
-        lat1 = current_global.lattitude_int / 10**7
-        lat2 = target_global.lattitude_int / 10**7
-        lon1 = current_global.longitude_int / 10**7
-        lon2 = target_global.longitude_int / 10**7
-        dl = 2 * 6371 * math.asin(math.sqrt(math.sin(math.radians(lat2-lat1)/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(math.radians(lon2-lon1)/2)**2))
-        da = current_global.altitude_rel_m - target_global.altitude_rel_m
+        M_PER_DEG_LAT = 111_320.0
 
-        distance_m = math.sqrt(dl*dl + da*da)
+        current = self.location.global_frame_relative
+
+        if current.lattitude_int is None or current.longitude_int is None or current.altitude_rel_m is None:
+            return False
+
+        # lat/lon are degrees * 1E7. Equirectangular is close enough over a course.
+        dn = (current.lattitude_int - target_global.lattitude_int) / 1E7 * M_PER_DEG_LAT
+        de = (current.longitude_int - target_global.longitude_int) / 1E7 * M_PER_DEG_LAT * math.cos(math.radians(current.lattitude_int / 1E7))
+        dd = current.altitude_rel_m - target_global.altitude_rel_m
+
+        distance_m = math.sqrt(dn*dn + de*de + dd*dd)
+
         return distance_m < threshold_m
     
     def convert_frd_target_to_local_ned_target(self, forward_m, right_m, down_m):
