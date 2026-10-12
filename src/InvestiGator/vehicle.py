@@ -1,5 +1,6 @@
 import time
 import math
+import lgpio
 from multiprocessing import Queue
 from queue import Empty
 from enum import Enum
@@ -45,6 +46,8 @@ class VehicleManager:
 
         self.lastknown_state = constants.MIL_STATE_STANDBY
         self.lastknown_pos = self.location.global_frame_relative #should be in lat, lon, rel alt order
+
+        self.magnet_state = 0
 
         self.intended_rtl_land = False
 
@@ -110,6 +113,15 @@ class VehicleManager:
                     print("Recieved all clear, returning to normal operations.")
                     Thread(target=self.move_global_gps_relative_alt, args=(self.lastknown_pos[0], self.lastknown_pos[1], self.lastknown_pos[2],), daemon=True).start()
                     #self.mav_connection_system_status = self.lastknown_state
+
+                case constants.MIL_SYSTEM_MAGNET:
+                    if self.magnet_state == 1:
+                        Thread(target=self.trigger_magnet, args=(0,), daemon=True).start()
+                        self.magnet_state = 0
+                    elif self.magnet_state == 0:
+                        Thread(target=self.trigger_magnet, args=(1,), daemon=True).start()
+                        self.magnet_state = 1
+                    
             
             if message.param1 in constants.MIL_SYSTEM_CMDS:
                 print("Sending command ack")
@@ -681,3 +693,16 @@ class VehicleManager:
         #self.mav_connection.close()
         # TODO: Check that threads in mavconnection are closed correctly
         self.camera.stop()
+
+    def trigger_magnet(self, input):
+        h = lgpio.gpiochip_open(0)
+        lgpio.gpio_claim_output(h,18)
+        lgpio.tx_pwm(h,18,50,5)
+
+        if input == 1:
+            lgpio.tx_pwm(h,18,50,9)
+
+        elif input == 0:
+            lgpio.tx_pwm(h,18,50,5)
+
+        lgpio.gpiochip_close(h)

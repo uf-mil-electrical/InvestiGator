@@ -302,6 +302,8 @@ class MissionControl(App):
                             yield Button(id="send_em_button", label="Respond to emergency", variant="primary")
                         with Center():
                             yield Button(id="send_em_return_button", label="All Clear", variant="primary")
+                        with Center():
+                            yield Button(id="magnet_button", label="Magnet", variant="success")
 
             
             with Vertical(id="log_panel", classes="panel") as log_panel:
@@ -335,6 +337,9 @@ class MissionControl(App):
 
         elif event.button.id == "send_em_return_button":
             self.send_command(command=constants.MIL_SYSTEM_CMD, param1=5)
+
+        elif event.button.id == "magnet_button":
+            self.send_command(command=constants.MIL_SYSTEM_CMD, param1=6)
             
     def on_select_changed(self, event: Select.Changed):
         select = self.query_one(Select)
