@@ -1,6 +1,5 @@
 import time
 import math
-import lgpio
 from multiprocessing import Queue
 from queue import Empty
 from enum import Enum
@@ -13,6 +12,10 @@ from .mavconnection import MAVConnection
 from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
 from .camera import Camera, MarkerDetection
 from . import constants
+
+h = lgpio.gpiochip_open(0)
+lgpio.gpio_claim_output(h,18)
+
 
 class VehicleManager:
     """
@@ -695,9 +698,9 @@ class VehicleManager:
         self.camera.stop()
 
     def trigger_magnet(self, input):
-        h = lgpio.gpiochip_open(0)
-        lgpio.gpio_claim_output(h,18)
-        lgpio.tx_pwm(h,18,50,5)
+        import lgpio
+
+#        lgpio.tx_pwm(h,18,50,5)
 
         if input == 1:
             lgpio.tx_pwm(h,18,50,9)
@@ -705,4 +708,4 @@ class VehicleManager:
         elif input == 0:
             lgpio.tx_pwm(h,18,50,5)
 
-        lgpio.gpiochip_close(h)
+#        lgpio.gpiochip_close(h)
