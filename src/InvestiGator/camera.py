@@ -8,6 +8,10 @@ from datetime import datetime
 
 import numpy as np
 import cv2
+try:
+    from picamera2 import Picamera2
+except ImportError:
+    Picamera2 = None
 import time
 
 RECORDING_DIR = Path(__file__).parent.parent / "recordings"
@@ -247,6 +251,50 @@ class Camera:
             finally:
                 cv2.destroyAllWindows()
 
+    def picamera_loop(self, running: EventType):
+        """
+        Process images from Raspberry Pi camera and output detection data to detection_queue.
+        """
+        picam2 = Picamera2()
+
+        config = picam2.create_video_configuration(
+            main={"size": DETECTION_RESOLUTION, "format": "RGB888"}
+        )
+
+        picam2.configure(config)
+        picam2.start()
+
+        detector = None
+
+        if self.mode == "UAV Recovery":
+            detector = self.aruco_detector()
+
+        try:
+            while running.is_set():
+                frame = picam2.capture_array()
+
+                if self.mode == "UAV Recovery" and detector is not None:
+                    frame = self.process_fiducial_frame(
+                        frame,
+                        detector,
+                        CAM_MATRIX_GEN,
+                        DIST_COEFF_GEN
+                    )
+
+                if self.preview:
+                    cv2.imshow("video", frame)
+
+                    if cv2.waitKey(1) == ord("q"):
+                        running.clear()
+                        break
+
+        except KeyboardInterrupt:
+            pass
+
+        finally:
+            picam2.stop()
+            cv2.destroyAllWindows()
+                
     def generic_camera_loop(self, running: EventType):
         """
         Process images from USB camera and output detection data to detection_queue.
@@ -292,12 +340,15 @@ class Camera:
 
     def video_loop(self, running: EventType):
         """
-        Main loop for video processing. Tries to run DepthAI camera and falls back to first USB camera if DepthAI camera not connected.
+        Main loop for video processing. Tries to run DepthAI camera and falls back to  rasberry pi camera then first USB camera if DepthAI camera not connected.
         """
         if len(dai.Device.getAllAvailableDevices()) != 0:
             self.depthai_loop(running)
+        elif Picamera2 is not None:
+            print("No DepthAI camera found. Using Raspberry Pi camera.")
+            self.picamera_loop(running)
         else:
-            print("No DepthAI camera found. Using generic USB camera.")
+            print("No DepthAI camera found or rasberry pi camera. Using generic USB camera.")
             self.generic_camera_loop(running)
         
             
