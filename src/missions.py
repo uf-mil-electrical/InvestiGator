@@ -130,8 +130,10 @@ def square_test(vehicle:VehicleManager):
 
     if not vehicle.arm():
         return False
+
     time.sleep(2)
     print("Vehicle armed")
+    time.sleep(2)
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 3m".encode())
     
     if not vehicle.takeoff(alt_m = 3):
@@ -458,6 +460,16 @@ def ups_and_downs(vehicle:VehicleManager):
 
     if not vehicle.arm():
         return False
+    time.sleep(2)
+    print("Vehicle armed")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 5m".encode())
+    
+    if not vehicle.takeoff(alt_m = 5):
+        vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "I died :(".encode())
+        vehicle.land()
+        return False
+
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off good :0\nmoving to sleep honkshoo".encode())
     time.sleep(2)
     print("Vehicle armed")
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 10m".encode())
