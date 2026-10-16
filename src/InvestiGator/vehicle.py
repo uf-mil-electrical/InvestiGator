@@ -14,8 +14,6 @@ from .geofence import Geofence, LatLng
 from .camera import Camera, MarkerDetection
 from . import constants
 
-h = lgpio.gpiochip_open(0)
-lgpio.gpio_claim_output(h,18)
 
 
 class VehicleManager:
@@ -79,6 +77,7 @@ class VehicleManager:
         param1 = 3: Set cancel mission
         param1 = 4: Respond to emergency
         param1 = 5: Return to mission
+        param1 = 6: Toggle Magnet
         """
         if message.command == constants.MIL_SYSTEM_CMD:
             match message.param1:
@@ -884,10 +883,15 @@ class VehicleManager:
         # TODO: Check that threads in mavconnection are closed correctly
         self.camera.stop()
 
+    open = 0
+
     def trigger_magnet(self, input):
         import lgpio
 
-#        lgpio.tx_pwm(h,18,50,5)
+        if open == 0:   
+            h = lgpio.gpiochip_open(0)
+            lgpio.gpio_claim_output(h,18)
+            open = 1
 
         if input == 1:
             lgpio.tx_pwm(h,18,50,9)
