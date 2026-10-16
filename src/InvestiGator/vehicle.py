@@ -14,7 +14,9 @@ from .geofence import Geofence, LatLng
 from .camera import Camera, MarkerDetection
 from . import constants
 
-M_PER_DEG_LAT = 111_320.0
+h = lgpio.gpiochip_open(0)
+lgpio.gpio_claim_output(h,18)
+
 
 class VehicleManager:
     """
@@ -27,6 +29,9 @@ class VehicleManager:
         self.cancel_mission_event = Event()
         self.uncontrolled_event = Event()
         self.uncontrolled_event.set()
+
+        #self.lastknown_state = constants.MIL_STATE_CONNECTING
+        #self.lastknown_pos = self.location.global_frame_relative #should be in lat, lon, rel alt order
 
         self.detection_queue: Queue[MarkerDetection] = Queue()
         self.camera = Camera(self.detection_queue, preview=False)
@@ -43,6 +48,12 @@ class VehicleManager:
         self.status = Status(self)
         self.geofence = Geofence()
         self.fence_alt_max_m = constants.FENCE_ALT_MAX_SIM_M if sim else constants.FENCE_ALT_MAX_M
+
+
+        self.lastknown_state = constants.MIL_STATE_STANDBY
+        self.lastknown_pos = self.location.global_frame_relative #should be in lat, lon, rel alt order
+
+        self.magnet_state = 0
 
         self.intended_rtl_land = False
 
@@ -66,6 +77,8 @@ class VehicleManager:
         param1 = 1: Set mode to GUIDED.
         param1 = 2: Set uncontrolled
         param1 = 3: Set cancel mission
+        param1 = 4: Respond to emergency
+        param1 = 5: Return to mission
         """
         if message.command == constants.MIL_SYSTEM_CMD:
             match message.param1:
@@ -91,6 +104,30 @@ class VehicleManager:
                     print("Received system command: Cancel mission.")
                     if self.mav_connection.system_status == constants.MIL_STATE_MISSION:
                         self.cancel_mission_event.set()
+
+                case constants.MIL_SYSTEM_EM_RESPOND:
+                    print("Recieved system command: Emergency Respond.")
+                    if self.mav_connection.system_status == constants.MIL_STATE_MISSION:
+                        self.mav_connection_system_status = constants.MIL_STATE_EMERGENCY
+                        self.cancel_mission_event.set()
+                    self.lastknown_pos = self.location.global_frame_relative
+                    self.mav_connection_system_status = constants.MIL_STATE_EMERGENCY
+                    Thread(target=self.move_global_gps_relative_alt, args=(int(message.param2), int(message.param3), int(message.param4), 20,), daemon=True).start()
+                    print("Ready for further instructions.")
+
+                case constants.MIL_SYSTEM_EM_RETURN:
+                    print("Recieved all clear, returning to normal operations.")
+                    Thread(target=self.move_global_gps_relative_alt, args=(self.lastknown_pos[0], self.lastknown_pos[1], self.lastknown_pos[2],), daemon=True).start()
+                    #self.mav_connection_system_status = self.lastknown_state
+
+                case constants.MIL_SYSTEM_MAGNET:
+                    if self.magnet_state == 1:
+                        Thread(target=self.trigger_magnet, args=(0,), daemon=True).start()
+                        self.magnet_state = 0
+                    elif self.magnet_state == 0:
+                        Thread(target=self.trigger_magnet, args=(1,), daemon=True).start()
+                        self.magnet_state = 1
+                    
             
             if message.param1 in constants.MIL_SYSTEM_CMDS:
                 print("Sending command ack")
@@ -124,7 +161,7 @@ class VehicleManager:
         manual_control = mode in self.MANUAL_MODES
         unintended_landing = mode in self.LANDING_MODES and not self.intended_rtl_land
 
-        if (manual_control or unintended_landing) and not self.mav_connection.system_status == constants.MIL_STATE_INITIAL_OVERRIDE and not self.mav_connection.system_status == constants.MIL_STATE_OVERRIDE:
+        if (manual_control or unintended_landing) and not self.mav_connection.system_status == constants.MIL_STATE_INITIAL_OVERRIDE and not self.mav_connection.system_status == constants.MIL_STATE_OVERRIDE and not self.mav_connection.system_status == constants.MIL_STATE_EMERGENCY:
             print(f"Manual mode: {manual_control}, Mode String: {mode}")
             print(f"Intended Land: {self.intended_rtl_land}")
             print(f"System Status: {self.mav_connection.system_status}")
@@ -491,6 +528,8 @@ class VehicleManager:
         """
         Check if target global position (altitude relative to home) has been reached within threshold_m meters.
         """
+        M_PER_DEG_LAT = 111_320.0
+
         current = self.location.global_frame_relative
 
         if current.lattitude_int is None or current.longitude_int is None or current.altitude_rel_m is None:
@@ -844,3 +883,16 @@ class VehicleManager:
         #self.mav_connection.close()
         # TODO: Check that threads in mavconnection are closed correctly
         self.camera.stop()
+
+    def trigger_magnet(self, input):
+        import lgpio
+
+#        lgpio.tx_pwm(h,18,50,5)
+
+        if input == 1:
+            lgpio.tx_pwm(h,18,50,9)
+
+        elif input == 0:
+            lgpio.tx_pwm(h,18,50,5)
+
+#        lgpio.gpiochip_close(h)
