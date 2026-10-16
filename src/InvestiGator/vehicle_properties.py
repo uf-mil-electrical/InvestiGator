@@ -3,6 +3,10 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from collections import namedtuple
 from threading import Lock
 from pymavlink import mavutil
+import math
+import time
+
+from . import constants
 
 MavFrameGlobal = namedtuple("MavFrameGlobal", ["lattitude_int", "longitude_int", "altitude_m"])
 MavFrameLocalNed = namedtuple("LocalNED", ["x_north_m", "y_east_m", "z_down_m"])
@@ -13,6 +17,13 @@ MavFrameBodyFRD = namedtuple("BodyFRD", ["x_forward_m", "y_right_m", "z_down_m"]
 MavFrameLocalFRD = namedtuple("LocalFRD", ["x_forward_m", "y_right_m", "z_down_m"])
 MavFrameLocalFLU = namedtuple("LocalFLU", ["x_forward_m", "y_left_m", "z_up_m"])
 Attitude = namedtuple("Attitude", ["roll_rad", "pitch_rad", "yaw_rad", "rollspeed_rad_s", "pitchspeed_rad_s", "yawspeed_rad_s"])
+
+# ArduCopter modes that count as autonomous for RobotState STATE_AUTO.
+AUTONOMOUS_MODES = {"GUIDED"}
+# ArduCopter has no mode called MANUAL: these are the modes a pilot flies. The autopilot flies the rest.
+MANUAL_MODES = {"STABILIZE", "ALT_HOLD", "ACRO", "LOITER", "POSHOLD", "DRIFT", "SPORT", "FLOWHOLD"}
+# ArduPilot fixes HEARTBEAT at 1 Hz and ignores SET_MESSAGE_INTERVAL for it, so 3.0 s tolerates two dropped
+FC_HEARTBEAT_STALE_S = 3.0
 
 class Location:
     """
@@ -26,6 +37,11 @@ class Location:
         self.lon_int = None
         self.alt_m = None
         self.relative_alt_m = None
+        self.vx_cm_s = None
+        self.vy_cm_s = None
+        self.vz_cm_s = None
+        self.hdg_cdeg = None
+        self.alt_ellipsoid_mm = None
 
         self.x_north_m = None
         self.y_east_m = None
@@ -45,6 +61,18 @@ class Location:
                 self.lon_int = message.lon # Divide by 1E7 to convert to degrees
                 self.alt_m = message.alt / 1E3 # Given in mm
                 self.relative_alt_m = message.relative_alt / 1E3  # Given in mm
+                self.vx_cm_s = message.vx  # Ground X speed (latitude, positive north)
+                self.vy_cm_s = message.vy  # Ground Y speed (longitude, positive east)
+                self.vz_cm_s = message.vz  # Ground Z speed (altitude, positive down)
+                self.hdg_cdeg = message.hdg  # Centidegrees, 65535 if unknown
+
+        @vehicle.subscribe(mavlink.MAVLink_gps_raw_int_message.msgname)
+        def update_gps_raw(message: mavlink.MAVLink_gps_raw_int_message):
+            if message.get_srcSystem() != 1:
+                return
+            with self.lock:
+                # Height above WGS84 ellipsoid in mm. MAVLink2 extension field, 0 on MAVLink1.
+                self.alt_ellipsoid_mm = message.alt_ellipsoid
 
         @vehicle.subscribe(mavlink.MAVLink_local_position_ned_message.msgname)
         def update_local_position(message: mavlink.MAVLink_local_position_ned_message):
@@ -88,6 +116,37 @@ class Location:
             return MavFrameLocalNed(self.x_north_m, self.y_east_m, self.z_down_m)
     
     @property
+    def ground_speed_mps(self):
+        """
+        Horizontal speed over ground in m/s from GLOBAL_POSITION_INT velocity.
+        """
+        with self.lock:
+            if self.vx_cm_s is None or self.vy_cm_s is None:
+                return None
+            return math.hypot(self.vx_cm_s, self.vy_cm_s) / 100.0
+
+    @property
+    def heading_deg(self):
+        """
+        Vehicle heading in degrees [0, 360) from GLOBAL_POSITION_INT. None if unknown.
+        """
+        with self.lock:
+            if self.hdg_cdeg is None or self.hdg_cdeg == 65535:  # 65535 is the MAVLink "unknown" sentinel
+                return None
+            return self.hdg_cdeg / 100.0
+
+    @property
+    def altitude_hae_m(self):
+        """
+        Altitude above the WGS84 ellipsoid (HAE) in meters from GPS_RAW_INT. None if not reported.
+        Deliberately no fallback to GLOBAL_POSITION_INT.alt, which is AMSL (a different datum).
+        """
+        with self.lock:
+            if not self.alt_ellipsoid_mm:
+                return None
+            return self.alt_ellipsoid_mm / 1000.0
+
+    @property
     def body_frd(self):
         """
         FRD local frame aligned to the vehicle's attitude (x: Forward, y: Right, z: Down) with an origin that travels with vehicle.
@@ -121,6 +180,7 @@ class Status:
         self.base_mode = None
         self.custom_mode = None
         self.system_status = None
+        self.heartbeat_t = None  # Receipt time of the last autopilot heartbeat
 
         # System Status Attributes
         self.onboard_control_sensors_present = None
@@ -137,6 +197,9 @@ class Status:
         self.errors_count3 = None
         self.errors_count4 = None
 
+        # Extended System State Attributes
+        self.landed_state = None
+
         @vehicle.subscribe(mavlink.MAVLink_heartbeat_message.msgname)
         def subscription_update(message: mavlink.MAVLink_heartbeat_message):
             # TODO: Make this reflect the configurable source system from vehiclemanager
@@ -149,6 +212,8 @@ class Status:
                 self.base_mode = message.base_mode
                 self.custom_mode = message.custom_mode
                 self.system_status = message.system_status
+                if message.get_srcComponent() == mavlink.MAV_COMP_ID_AUTOPILOT1:
+                    self.heartbeat_t = time.monotonic()
 
         @vehicle.subscribe(mavlink.MAVLink_sys_status_message.msgname)
         def on_sys_status(message: mavlink.MAVLink_sys_status_message):
@@ -168,13 +233,24 @@ class Status:
                 self.errors_count2 = message.errors_count2
                 self.errors_count3 = message.errors_count3
                 self.errors_count4 = message.errors_count4
-                
+
+        @vehicle.subscribe(mavlink.MAVLink_extended_sys_state_message.msgname)
+        def update_landed_state(message: mavlink.MAVLink_extended_sys_state_message):
+            if message.get_srcSystem() != 1:
+                return
+            with self.lock:
+                self.landed_state = message.landed_state
+
+
     @property
     def armed(self):
         with self.lock:
             if self.base_mode is None:
                 return False
             return bool(self.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
+    
+    def disarmed(self):
+        return not self.armed
 
     @property
     def prearmed(self):
@@ -190,4 +266,46 @@ class Status:
                 return None
             return self.mode_map_bynumber.get(self.custom_mode)
 
+    @property
+    def flight_phase(self):
+        """
+        Map MAV_LANDED_STATE to FlightPhase (constants.FLIGHT_PHASE_*).
+        """
+        with self.lock:
+            match self.landed_state:
+                case mavlink.MAV_LANDED_STATE_ON_GROUND:
+                    return constants.FLIGHT_PHASE_GROUNDED
+                case mavlink.MAV_LANDED_STATE_IN_AIR | mavlink.MAV_LANDED_STATE_TAKEOFF | mavlink.MAV_LANDED_STATE_LANDING:
+                    return constants.FLIGHT_PHASE_AIRBORNE
+                case _:
+                    return constants.FLIGHT_PHASE_UNKNOWN
 
+    @property
+    def robot_state(self):
+        """
+        RobotX Heartbeat.state from the latest autopilot heartbeat. Recomputed on every read, never latched.
+        KILLED when the autopilot heartbeat is stale, or when disarmed in any mode, including at power-on.
+        MANUAL when armed in a mode a pilot flies. AUTO when armed and in GUIDED.
+        Armed in any other autopilot-flown mode (AUTO, RTL, LAND) falls back to MANUAL, so UNKNOWN is never reported.
+        STATE_AUTO gates RunStart, so it must not be reported early.
+        """
+        with self.lock:
+            fresh = self.heartbeat_t is not None and time.monotonic() - self.heartbeat_t < FC_HEARTBEAT_STALE_S
+            armed = self.base_mode is not None and bool(self.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
+            mode = self.mode_map_bynumber.get(self.custom_mode)
+
+            # Checked first so a kill always wins: stale autopilot data, or disarmed.
+            if not fresh or not armed:
+                return constants.ROBOT_STATE_KILLED
+
+            if mode in MANUAL_MODES:
+                return constants.ROBOT_STATE_MANUAL
+
+            if armed and mode in AUTONOMOUS_MODES:
+                # TODO(open decision): "ready" is armed + GUIDED for now. Any extra check (e.g. 3D GPS fix,
+                # holding position) goes here.
+                return constants.ROBOT_STATE_AUTO
+
+            # Default to "MANUAL" state if armed in an unrecognized autopilot mode
+            # In practice: should not happen!
+            return constants.ROBOT_STATE_MANUAL
