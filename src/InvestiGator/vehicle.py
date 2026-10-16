@@ -379,7 +379,7 @@ class VehicleManager:
         mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE & \
         mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
 
-        target_global_rel_alt = MavFrameGlobalRel(lat_int, lon_int, alt_m)
+        target_global_rel_pos = MavFrameGlobalRel(lat_int, lon_int, alt_m)
 
         self.mav.set_position_target_global_int_send(
             time_boot_ms=0,
@@ -402,27 +402,26 @@ class VehicleManager:
 
         remaining_s = timeout_s - (time.monotonic() - start_s)
 
-        if not self.wait_for_condition(lambda: self.target_global_reached(target_global_rel_alt), timeout_s=remaining_s):
-            # Stop movement: hold the current position. Zeros here would be a target at lat 0, lon 0.
-            here = self.location.global_frame_relative
-            self.mav.set_position_target_global_int_send(
-                time_boot_ms=0,
-                target_system=1,
-                target_component=0,
-                coordinate_frame=mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
-                type_mask=typemask,
-                lat_int=here.lattitude_int,
-                lon_int=here.longitude_int,
-                alt=here.altitude_rel_m,
-                vx = 0,
-                vy = 0,
-                vz = 0,
-                afx = 0,
-                afy = 0,
-                afz = 0,
-                yaw = 0,
-                yaw_rate = 0
-            )
+        if not self.wait_for_condition(lambda: self.target_global_reached(target_global_rel_pos), timeout_s=remaining_s):
+            # Stop movement
+            #self.mav.set_position_target_global_int_send(
+            #    time_boot_ms=0,
+            #    target_system=1,
+            #    target_component=0,
+            #    coordinate_frame=mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
+            #    type_mask=typemask,
+            #    x = 0,
+            #    y = 0,
+            #    z = 0,
+            #    vx = 0,
+            #    vy = 0,
+            #    vz = 0,
+            #    afx = 0,
+            #    afy = 0,
+            #    afz = 0,
+            #    yaw = 0,
+            #    yaw_rate = 0
+            #)
 
             return False
 

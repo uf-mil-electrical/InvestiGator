@@ -545,13 +545,16 @@ def gps_test(vehicle:VehicleManager):
         vehicle.land()
         return False
 
-
+    target_gps = vehicle.location.global_frame
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Testing GPS movment".encode())
-    if not vehicle.move_global_gps_relative_alt(lat_int = -353632621 + 90, lon_int = 1491652373, alt_m = vehicle.location.global_frame_relative.altitude_rel_m + 20):
+    print(vehicle.location.global_frame_relative)
+    if not vehicle.move_global_gps_relative_alt(lat_int = vehicle.location.global_frame_relative[0] + 90, lon_int = vehicle.location.global_frame_relative[1]+90, alt_m = 10, timeout_s=10):
         print("Failed to GPS, landing")
+        print(vehicle.location.global_frame_relative)
+        print(target_gps)
         vehicle.land()
         return False
-    print(vehicle.location.global_frame)
+    print(vehicle.location.global_frame_relative)
 
     print("Movement success! Landing.")
     vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "GPS move success! Landing".encode())
