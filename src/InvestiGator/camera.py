@@ -17,6 +17,17 @@ import time
 RECORDING_DIR = Path(__file__).parent.parent / "recordings"
 RECODRING_RESOLUTION = (1280, 720)
 DETECTION_RESOLUTION = (1280, 720)
+BLUE_MIN = np.array([100, 150, 110])
+BLUE_MAX = np.array([135, 255, 220])
+
+GREEN_MIN = np.array([40, 80, 80])
+GREEN_MAX = np.array([85, 255, 255])
+
+RED_MIN_1 = np.array([0, 100, 80])
+RED_MAX_1 = np.array([10, 255, 255])
+
+RED_MIN_2 = np.array([160, 150, 120])
+RED_MAX_2 = np.array([179, 255, 255])
 
 # TODO: Dictionary for the pose queue, paths of model blobs
 
@@ -63,6 +74,7 @@ MARKER_CORNERS_CENTER = np.array([
 ], dtype=np.float32)
 
 MarkerDetection = namedtuple("MarkerDetection",["X_Offset_m", "Y_Offset_m", "Z_Offset_m"])
+SafePassageDetection = namedtuple("SafePassageDetection",["marker_type", "x_pixel", "y_pixel"])
 
 class Camera:
     """
@@ -166,6 +178,205 @@ class Camera:
         pt2 = width // 2 + 10, height // 2 + 10
         cv2.rectangle(frame, pt1, pt2, (0,0,255), 1, cv2.LINE_AA)
 
+    def detect_water(self, mask):
+        """
+        Return valid color "blobs" from a color mask in order to filter out water and other unimportant colors.
+        """
+        contours, _ = cv2.findContours(
+            mask,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+        blobs = []
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if 30 < area < 4000:
+                x, y, w, h = cv2.boundingRect(contour)
+                blobs.append({
+                    "x": x + w // 2,
+                    "y": y + h // 2,
+                    "box": (x, y, w, h)
+                })
+
+        return blobs
+    def update_buoy_locations(self, tracks, blobs, now):
+        """
+        Match color blobs to detected buoy locations to remember places of them.
+        """
+        matched = set()
+        for blob in blobs:
+            closest_id = None
+            closest_distance = 80
+            for track_id, track in tracks.items():
+                dx = blob["x"] - track["x"]
+                dy = blob["y"] - track["y"]
+                distance = (dx * dx + dy * dy) ** 0.5
+
+                if distance < closest_distance:
+                    closest_distance = distance
+                    closest_id = track_id
+
+            if closest_id is None:
+                closest_id = len(tracks)
+                tracks[closest_id] = {
+                    "x": blob["x"],
+                    "y": blob["y"],
+                    "box": blob["box"],
+                    "on": True,
+                    "on_start": now,
+                    "last_change": now,
+                    "changes": [],
+                    "last_report": 0
+                }
+            track = tracks[closest_id]
+            track["x"] = blob["x"]
+            track["y"] = blob["y"]
+            track["box"] = blob["box"]
+
+            matched.add(closest_id)
+            if not track["on"]:
+                track["on"] = True
+                track["on_start"] = now
+                track["last_change"] = now
+                track["changes"].append(now)
+
+        for track_id, track in tracks.items():
+            if track_id not in matched and track["on"]:
+                if now - track["last_change"] >= 0.2:
+                    track["on"] = False
+                    track["last_change"] = now
+                    track["changes"].append(now)
+
+            track["changes"] = [
+                t for t in track["changes"]
+                if now - t < 6
+            ]
+    def buoy_meaning(self, tracks, color, frame, now):
+        """
+        Identify buoy meaning.
+        """
+        for track in tracks.values():
+
+            marker_type = None
+
+            if color == "BLUE":
+                if len(track["changes"]) >= 3:
+                    marker_type = "ENTRY"
+
+                elif track["on"] and now - track["on_start"] >= 3:
+                    marker_type = "EXIT"
+
+            elif color == "RED":
+                if len(track["changes"]) >= 3:
+                    marker_type = "RED"
+
+            elif color == "GREEN":
+                if len(track["changes"]) >= 3:
+                    marker_type = "GREEN"
+
+            if marker_type is None:
+                continue
+
+            x, y, w, h = track["box"]
+
+            if self.preview:
+                cv2.rectangle(
+                    frame,
+                    (x, y),
+                    (x + w, y + h),
+                    (255, 255, 255),
+                    2
+                )
+
+                cv2.putText(
+                    frame,
+                    marker_type,
+                    (x, y - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (255, 255, 255),
+                    2
+                )
+
+            if now - track["last_report"] >= 1:
+                self.detection_queue.put(
+                    SafePassageDetection(
+                        marker_type,
+                        track["x"],
+                        track["y"]
+                    )
+                )
+                track["last_report"] = now
+
+    def process_safe_passage_frame(self, frame, blue_tracks, red_tracks, green_tracks):
+        """
+        Detect Task 1 light beacons for safe passage and to then identify which it is and what it is communicating.
+        """
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        blue_mask = cv2.inRange(
+            hsv,
+            BLUE_MIN,
+            BLUE_MAX
+        )
+        green_mask = cv2.inRange(
+            hsv,
+            GREEN_MIN,
+            GREEN_MAX
+        )
+        red_mask_1 = cv2.inRange(
+            hsv,
+            RED_MIN_1,
+            RED_MAX_1
+        )
+        red_mask_2 = cv2.inRange(
+            hsv,
+            RED_MIN_2,
+            RED_MAX_2
+        )
+        red_mask = red_mask_1 | red_mask_2
+        blue_blobs = self.detect_water(blue_mask)
+        red_blobs = self.detect_water(red_mask)
+        green_blobs = self.detect_water(green_mask)
+
+        now = time.monotonic()
+        self.update_buoy_locations(
+            blue_tracks,
+            blue_blobs,
+            now
+        )
+        self.update_buoy_locations(
+            red_tracks,
+            red_blobs,
+            now
+        )
+        self.update_buoy_locations(
+            green_tracks,
+            green_blobs,
+            now
+        )
+
+        self.buoy_meaning(
+            blue_tracks,
+            "BLUE",
+            frame,
+            now
+        )
+
+        self.buoy_meaning(
+            red_tracks,
+            "RED",
+            frame,
+            now
+        )
+
+        self.buoy_meaning(
+            green_tracks,
+            "GREEN",
+            frame,
+            now
+        )
+
+        return frame
     def process_fiducial_frame(self, frame: np.ndarray, detector: cv2.aruco.ArucoDetector, cam_matrix: np.ndarray, dist_coeffs: np.ndarray) -> np.ndarray:
         """
         Process input frame and search for fiducial markers. Draw markers to screen if preview is enabled.
@@ -253,10 +464,9 @@ class Camera:
 
     def picamera_loop(self, running: EventType):
         """
-        Process images from Raspberry Pi camera and output detection data to detection_queue.
+        Process images from Raspberry Pi camera and output detections to detection_queue.
         """
         picam2 = Picamera2()
-
         config = picam2.create_video_configuration(
             main={"size": DETECTION_RESOLUTION, "format": "RGB888"}
         )
@@ -265,12 +475,16 @@ class Camera:
         picam2.start()
 
         detector = None
+        blue_tracks = {}
+        red_tracks = {}
+        green_tracks = {}
 
         if self.mode == "UAV Recovery":
             detector = self.aruco_detector()
 
         try:
             while running.is_set():
+
                 frame = picam2.capture_array()
 
                 if self.mode == "UAV Recovery" and detector is not None:
@@ -279,6 +493,14 @@ class Camera:
                         detector,
                         CAM_MATRIX_GEN,
                         DIST_COEFF_GEN
+                    )
+
+                elif self.mode == "Safe Passage":
+                    frame = self.process_safe_passage_frame(
+                        frame,
+                        blue_tracks,
+                        red_tracks,
+                        green_tracks
                     )
 
                 if self.preview:
@@ -294,7 +516,7 @@ class Camera:
         finally:
             picam2.stop()
             cv2.destroyAllWindows()
-                
+                    
     def generic_camera_loop(self, running: EventType):
         """
         Process images from USB camera and output detection data to detection_queue.
@@ -340,18 +562,19 @@ class Camera:
 
     def video_loop(self, running: EventType):
         """
-        Main loop for video processing. Tries to run DepthAI camera and falls back to  rasberry pi camera then first USB camera if DepthAI camera not connected.
+        Main loop for video processing.
         """
         if len(dai.Device.getAllAvailableDevices()) != 0:
             self.depthai_loop(running)
+
         elif Picamera2 is not None:
             print("No DepthAI camera found. Using Raspberry Pi camera.")
             self.picamera_loop(running)
+
         else:
-            print("No DepthAI camera found or rasberry pi camera. Using generic USB camera.")
+            print("No DepthAI or Raspberry Pi camera found. Using generic USB camera.")
             self.generic_camera_loop(running)
-        
-            
+                
 if __name__ == "__main__":
     
     queue = Queue()
