@@ -71,6 +71,7 @@ MISSION_NUMBERS = {
     "RTL_BATT_TEST": 8,
     "GPS_TEST": 9,
     "GEOFENCE_TEST": 10,
+    "EM_test": 11,
 }
 MISSION_NUMBERS_REVERSE = {v: k for k, v in MISSION_NUMBERS.items()}
 
