@@ -411,9 +411,9 @@ class VehicleManager:
         """
         #0b110111111000
         start_s = time.monotonic()
-        typemask = mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE & \
-        mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE & \
-        mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE & mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
+        # Position only: a target with velocity skips the path planner.
+        typemask = mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE | \
+        mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE
 
         target_global_rel_pos = MavFrameGlobalRel(lat_int, lon_int, alt_m)
 
@@ -726,39 +726,80 @@ class VehicleManager:
         finally:
             self.unsubscribe(mavlink.MAVLink_param_value_message.msgname, on_param_value)
 
-    def upload_fence_polygon(self, vertices: list[LatLng], timeout_s: float = 5.0, retries: int = 3) -> bool:
+    def get_parameter(self, parameter: str, timeout_s: float = 2.0, retries: int = 3) -> float | None:
         """
-        Upload vertices to the flight controller as an ArduPilot polygon inclusion fence.
+        Read one flight controller parameter. None if the autopilot never answered.
+        """
+        received = Event()
+        value = None
+
+        def on_param_value(message: mavlink.MAVLink_param_value_message):
+            nonlocal value
+            if message.get_srcSystem() != 1 or message.param_id != parameter:
+                return
+            value = message.param_value
+            received.set()
+
+        self.subscribe(mavlink.MAVLink_param_value_message.msgname)(on_param_value)
+
+        try:
+            for _ in range(retries):
+                self.mav.param_request_read_send(
+                    target_system=1,
+                    target_component=mavlink.MAV_COMP_ID_AUTOPILOT1,
+                    param_id=parameter.encode("utf-8"),
+                    param_index=-1
+                )
+
+                if self.wait_for_condition(lambda: received.is_set(), timeout_s=timeout_s):
+                    return value
+
+            print(f"Parameter {parameter} could not be read after {retries} attempts.")
+            return None
+
+        finally:
+            self.unsubscribe(mavlink.MAVLink_param_value_message.msgname, on_param_value)
+
+    def upload_fence_polygon(self, vertices: list[LatLng], exclusions: list[list[LatLng]] = (), timeout_s: float = 5.0, retries: int = 3) -> bool:
+        """
+        Upload vertices to the flight controller as the inclusion fence, and each polygon in
+        exclusions as an exclusion fence.
 
         Uses the mission protocol with MAV_MISSION_TYPE_FENCE: MISSION_COUNT, then one MISSION_ITEM_INT
         per vertex as the autopilot requests them, then MISSION_ACK. The legacy FENCE_TOTAL/FENCE_POINT
         message pair is not an option: ArduCopter 4.8 has no handler for it, only the FENCE_STATUS
         downlink. This replaces whatever fence was stored; there is no partial update.
 
-        vertices must not repeat the first point at the end. ArduPilot closes the polygon itself, and
-        every vertex of a polygon has to carry the same total vertex count in param1.
+        No polygon may repeat its first point. Each goes up as a contiguous run of items, every vertex
+        carrying its own polygon's vertex count in param1.
         """
         acknowledged = Event()
         ack_result = None
 
+        # (command, polygon vertex count, vertex) per mission item.
+        items = [(mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION, len(vertices), vertex) for vertex in vertices]
+        for polygon in exclusions:
+            items += [(mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION, len(polygon), vertex) for vertex in polygon]
+
         def send_vertex(seq: int):
-            if not 0 <= seq < len(vertices):
+            if not 0 <= seq < len(items):
                 return
 
+            command, vertex_count, vertex = items[seq]
             self.mav.mission_item_int_send(
                 target_system=1,
                 target_component=mavlink.MAV_COMP_ID_AUTOPILOT1,
                 seq=seq,
                 frame=mavlink.MAV_FRAME_GLOBAL,
-                command=mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION,
+                command=command,
                 current=0,
                 autocontinue=0,
-                param1=len(vertices),
+                param1=vertex_count,
                 param2=0,
                 param3=0,
                 param4=0,
-                x=int(round(vertices[seq].latitude * 1E7)),
-                y=int(round(vertices[seq].longitude * 1E7)),
+                x=int(round(vertex.latitude * 1E7)),
+                y=int(round(vertex.longitude * 1E7)),
                 z=0,
                 mission_type=mavlink.MAV_MISSION_TYPE_FENCE
             )
@@ -792,7 +833,7 @@ class VehicleManager:
                 self.mav.mission_count_send(
                     target_system=1,
                     target_component=mavlink.MAV_COMP_ID_AUTOPILOT1,
-                    count=len(vertices),
+                    count=len(items),
                     mission_type=mavlink.MAV_MISSION_TYPE_FENCE
                 )
 
@@ -812,10 +853,12 @@ class VehicleManager:
             self.unsubscribe(mavlink.MAVLink_mission_request_message.msgname, on_request)
             self.unsubscribe(mavlink.MAVLink_mission_ack_message.msgname, on_ack)
 
-    def set_course_boundary(self, corners) -> bool:
+    def set_course_boundary(self, corners, exclusion_zones=()) -> bool:
         """
         Take the course boundary for this run and put it live on the flight controller as the UAV
         geofence. Single entry point for a received RxCourse boundary.
+
+        exclusion_zones: polygons to keep out of, uploaded with the boundary.
 
         Returns False without enabling the fence if the upload fails, and forgets the geofence
         in that case. RunDeclaration reports the geofence we enforce, so a fence that failed to upload
@@ -823,23 +866,18 @@ class VehicleManager:
         """
         self.geofence.set_course_boundary(corners)
 
-        if not self.configure_geofence():
+        if not self.geofence.set_exclusion_zones(exclusion_zones) or not self.configure_geofence():
             self.geofence.clear()
             return False
 
-        print(f"UAV geofence live: {len(self.geofence.fence_vertices)} vertices, {constants.FENCE_MARGIN_M} m margin, {self.fence_alt_max_m} m AMSL ceiling.")
+        print(f"UAV geofence live: {len(self.geofence.fence_vertices)} vertices, {len(self.geofence.exclusion_vertices)} exclusion zone(s), "
+              f"{constants.FENCE_MARGIN_M} m margin, {self.fence_alt_max_m} m AMSL ceiling.")
         return True
 
     def configure_geofence(self) -> bool:
         """
-        Push the UAV geofence to the flight controller and enable it.
-
-        self.geofence.set_course_boundary() must have run first, which happens once the RxCourse
-        boundary for this run has been received. Call this before the run, not during one.
-
-        The fence is disabled first so a half-written polygon is never the active boundary, and
-        enabled last once the polygon and every parameter has been confirmed. Any failure leaves
-        FENCE_ENABLE at 0 rather than a fence that only partly describes the course.
+        Upload the geofence and enable it, before the run. Any failure leaves the fence disabled.
+        OA_TYPE is checked, never written.
         """
         vertices = self.geofence.fence_vertices
 
@@ -847,10 +885,16 @@ class VehicleManager:
             print("No UAV geofence to upload. No course boundary has been received.")
             return False
 
+        # Read first, so a failed read leaves the current fence untouched.
+        oa_type = self.get_parameter("OA_TYPE")
+        guided_options = self.get_parameter("GUID_OPTIONS")
+        if oa_type is None or guided_options is None:
+            return False
+
         if not self.set_parameter("FENCE_ENABLE", 0):
             return False
 
-        if not self.upload_fence_polygon(vertices):
+        if not self.upload_fence_polygon(vertices, self.geofence.exclusion_vertices):
             return False
 
         # FENCE_ALT_MAX_TP defaults to above-home, so the frame is set explicitly for an AMSL ceiling.
@@ -860,13 +904,22 @@ class VehicleManager:
             ("FENCE_ALT_MAX_TP", constants.FENCE_ALT_FRAME_AMSL),
             ("FENCE_ACTION", constants.FENCE_ACTION_RTL),
             ("FENCE_MARGIN", constants.FENCE_MARGIN_M),
+            ("OA_MARGIN_MAX", constants.OA_MARGIN_MAX_M),
+            # Keep the Cube's other bits.
+            ("GUID_OPTIONS", int(guided_options) | constants.GUID_OPTIONS_WPNAV_POSITION_TARGETS),
         )
 
         for parameter, value in parameters:
             if not self.set_parameter(parameter, value):
                 return False
 
-        return self.set_parameter("FENCE_ENABLE", 1)
+        if not self.set_parameter("FENCE_ENABLE", 1):
+            return False
+
+        # Setting OA_TYPE = 2 allows for drone path planning around exclusion zones.
+        if oa_type != 2:
+            print(f"OA_TYPE is {oa_type:g}, not 2: paths won't be planned around exclusion zones.")
+        return True
 
     def reset_state(self):
         """

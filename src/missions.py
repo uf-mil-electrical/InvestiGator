@@ -602,8 +602,9 @@ def em_test(vehicle:VehicleManager):
 @mission("GEOFENCE_TEST")
 def geofence_test(vehicle: VehicleManager):
     """
-    Put a 10 m square fence centred on the drone live on the flight controller, through the same
-    set_course_boundary() path an RxCourse boundary will use. Test boundary only. Does not arm or fly.
+    Put a 12 m square fence centred on the drone live on the flight controller, with a 1 m square
+    exclusion zone in its north-east quarter, through the same set_course_boundary() path an RxCourse
+    boundary will use. Test boundary only. Does not arm or fly.
     Read it back from the ground station with test_protocols.py.
     """
     here = vehicle.location.global_frame
@@ -613,12 +614,20 @@ def geofence_test(vehicle: VehicleManager):
         return False
 
     lat, lon = here.lattitude_int / 1E7, here.longitude_int / 1E7
-    half_side_m = 5.0
     m_per_deg_lat = 111_320.0  # Near enough for a test square
-    d_lat = half_side_m / m_per_deg_lat
-    d_lon = half_side_m / (m_per_deg_lat * math.cos(math.radians(lat)))
+    lat_per_m = 1 / m_per_deg_lat
+    lon_per_m = 1 / (m_per_deg_lat * math.cos(math.radians(lat)))
 
-    corners = [LatLng(lat - d_lat, lon - d_lon), LatLng(lat - d_lat, lon + d_lon),
-               LatLng(lat + d_lat, lon + d_lon), LatLng(lat + d_lat, lon - d_lon)]
+    half_side_m = 6.0
+    half_lat, half_lon = half_side_m * lat_per_m, half_side_m * lon_per_m
+    corners = [LatLng(lat - half_lat, lon - half_lon), LatLng(lat - half_lat, lon + half_lon),
+               LatLng(lat + half_lat, lon + half_lon), LatLng(lat + half_lat, lon - half_lon)]
 
-    return vehicle.set_course_boundary(corners + corners[:1])
+    # 2-3 m N and E, clear of the drone: it can't arm inside an exclusion.
+    near_m, far_m = 2.0, 3.0
+    near_lat, near_lon = near_m * lat_per_m, near_m * lon_per_m
+    far_lat, far_lon = far_m * lat_per_m, far_m * lon_per_m
+    exclusion = [LatLng(lat + near_lat, lon + near_lon), LatLng(lat + near_lat, lon + far_lon),
+                 LatLng(lat + far_lat, lon + far_lon), LatLng(lat + far_lat, lon + near_lon)]
+
+    return vehicle.set_course_boundary(corners + corners[:1], [exclusion])

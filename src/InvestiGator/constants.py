@@ -96,6 +96,11 @@ FENCE_ALT_MAX_M = 60.0
 # SITL's default home (Canberra) is 584 m AMSL, so in sim the ceiling keeps the same 60 m of headroom above it.
 FENCE_ALT_MAX_SIM_M = 644.0
 
-# The fence is the course boundary itself. FENCE_MARGIN is how far inside it the autopilot warns and,
-# with the fence bit in AVOID_ENABLE, stops the vehicle. FENCE_ACTION still fires at the boundary.
+# The fence is the course boundary. FENCE_MARGIN is a warning band inside it (no braking on planned
+# moves); FENCE_ACTION fires at the boundary itself.
 FENCE_MARGIN_M = 2.0
+
+# Planner clearance from every fence edge, boundary and exclusions alike.
+OA_MARGIN_MAX_M = 1.0
+# Sends GUIDED position targets through waypoint navigation, where the planner runs.
+GUID_OPTIONS_WPNAV_POSITION_TARGETS = 1 << 6

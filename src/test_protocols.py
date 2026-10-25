@@ -8,7 +8,7 @@ Run it instead of ground_control.py, never alongside it: both open the same conn
 from InvestiGator import MAVConnection, constants
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from config import load_config
-from gc_helpers import configure_messages
+from gc_helpers import configure_messages, send_command
 from queue import Queue, Empty
 from threading import Lock
 import argparse
@@ -195,17 +195,31 @@ def check_fence(connection: MAVConnection, fence_status):
         report(False, "no fence stored")
         return
 
-    report(all(item.command == mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION and item.param1 == len(items) for item in items),
-           f"{len(items)} inclusion vertices, each carrying the vertex count")
+    # Each polygon is a run of items carrying its vertex count in param1.
+    polygons = []
+    start = 0
+    while start < len(items):
+        count = max(int(items[start].param1), 1)
+        polygons.append(items[start:start + count])
+        start += count
 
-    vertices = [(item.x / 1E7, item.y / 1E7) for item in items]
-    for index, (lat, lon) in enumerate(vertices):
-        print(f"    {index}: {lat:.7f}, {lon:.7f}")
+    kinds = {mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION: "inclusion", mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION: "exclusion"}
+    inclusions = sum(polygon[0].command == mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION for polygon in polygons)
+    report(inclusions == 1, f"{inclusions} inclusion polygon(s), {len(polygons) - inclusions} other (expect exactly 1 inclusion, the course boundary)")
 
-    lat0, lon0 = vertices[0]
-    points = [to_local_m(lat, lon, lat0, lon0) for lat, lon in vertices]
-    edges = list(zip(points, points[1:] + points[:1]))
-    print("    edges: " + ", ".join(f"{math.dist(a, b):.2f} m" for a, b in edges))
+    for polygon in polygons:
+        kind = kinds.get(polygon[0].command, f"command {polygon[0].command}")
+        report(polygon[0].command in kinds and all(item.command == polygon[0].command and item.param1 == len(polygon) for item in polygon),
+               f"{kind} polygon: {len(polygon)} vertices, each carrying the vertex count")
+
+        vertices = [(item.x / 1E7, item.y / 1E7) for item in polygon]
+        for item, (lat, lon) in zip(polygon, vertices):
+            print(f"    {item.seq}: {lat:.7f}, {lon:.7f}")
+
+        lat0, lon0 = vertices[0]
+        points = [to_local_m(lat, lon, lat0, lon0) for lat, lon in vertices]
+        edges = list(zip(points, points[1:] + points[:1]))
+        print("    edges: " + ", ".join(f"{math.dist(a, b):.2f} m" for a, b in edges))
 
 
 def main():
@@ -226,6 +240,9 @@ def main():
 
     try:
         configure_messages(connection)
+        # check_fence needs FENCE_STATUS, which the link's default streams may not carry.
+        send_command(connection=connection, command=mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, target_component=0,
+                     param1=mavlink.MAVLINK_MSG_ID_FENCE_STATUS, param2=1E6)
         counts, latest, landed_states = listen(connection, args.duration)
         check_telemetry(counts, latest, landed_states, args.duration)
         check_fence(connection, latest.get((AUTOPILOT, "FENCE_STATUS")))

@@ -41,6 +41,11 @@ LatLng = namedtuple("LatLng", ["latitude", "longitude"])
 #     return inset + inset[:1]
 
 
+# ArduPilot's per-polygon vertex limits.
+MIN_POLYGON_VERTICES = 3
+MAX_POLYGON_VERTICES = 255
+
+
 class Geofence:
     """
     The course boundary received from RoboCommand (RxCourse), used directly as the UAV geofence.
@@ -52,6 +57,7 @@ class Geofence:
     def __init__(self):
         self.lock = Lock()
         self.course_boundary: list[LatLng] = []
+        self.exclusion_zones: list[list[LatLng]] = []
 
     def set_course_boundary(self, corners):
         """
@@ -62,12 +68,37 @@ class Geofence:
         with self.lock:
             self.course_boundary = boundary
 
+    def set_exclusion_zones(self, zones) -> bool:
+        """
+        Replace the exclusion zones. Each zone is a list of lat/lng vertices, closed or open.
+        Returns False, storing nothing, if any zone is outside the vertex limits.
+        """
+        polygons = []
+
+        for index, zone in enumerate(zones):
+            vertices = [LatLng(float(vertex.latitude), float(vertex.longitude)) for vertex in zone]
+
+            # Stored open, like fence_vertices.
+            if len(vertices) > 1 and vertices[0] == vertices[-1]:
+                vertices = vertices[:-1]
+
+            if not MIN_POLYGON_VERTICES <= len(vertices) <= MAX_POLYGON_VERTICES:
+                print(f"Exclusion zone {index} has {len(vertices)} vertices. Needs {MIN_POLYGON_VERTICES} to {MAX_POLYGON_VERTICES}.")
+                return False
+
+            polygons.append(vertices)
+
+        with self.lock:
+            self.exclusion_zones = polygons
+        return True
+
     def clear(self):
         """
-        Forget the course boundary. A stale boundary from a previous course is worse than none.
+        Forget the course boundary and exclusion zones. A stale boundary from a previous course is worse than none.
         """
         with self.lock:
             self.course_boundary = []
+            self.exclusion_zones = []
 
     @property
     def uav_geofence(self) -> list[LatLng]:
@@ -84,3 +115,11 @@ class Geofence:
         """
         with self.lock:
             return self.course_boundary[:-1]
+
+    @property
+    def exclusion_vertices(self) -> list[list[LatLng]]:
+        """
+        Exclusion zones without closing points, for the ArduPilot upload.
+        """
+        with self.lock:
+            return [list(zone) for zone in self.exclusion_zones]
