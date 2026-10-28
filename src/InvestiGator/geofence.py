@@ -58,6 +58,8 @@ class Geofence:
         self.lock = Lock()
         self.course_boundary: list[LatLng] = []
         self.exclusion_zones: list[list[LatLng]] = []
+        # KeepOutZone areas (circles) as (center, radius_m). Kept until AllClear, across boundary changes.
+        self.keep_out_areas: list[tuple[LatLng, float]] = []
 
     def set_course_boundary(self, corners):
         """
@@ -99,6 +101,43 @@ class Geofence:
         with self.lock:
             self.course_boundary = []
             self.exclusion_zones = []
+
+    def add_keep_out(self, center: LatLng, radius_m: float) -> bool:
+        """
+        Add a keep-out area. False if the same area is already active.
+        """
+        with self.lock:
+            if (center, radius_m) in self.keep_out_areas:
+                return False
+            self.keep_out_areas.append((center, radius_m))
+            return True
+
+    def clear_keep_outs(self) -> bool:
+        """
+        Remove every keep-out area. False if there were none.
+        """
+        with self.lock:
+            had_areas = bool(self.keep_out_areas)
+            self.keep_out_areas = []
+            return had_areas
+
+    @property
+    def exclusion_areas(self) -> list[tuple[LatLng, float]]:
+        with self.lock:
+            return list(self.keep_out_areas)
+
+    def contains(self, latitude: float, longitude: float) -> bool:
+        """
+        True if the point is inside the course boundary (ray casting in degrees, fine over a course).
+        """
+        with self.lock:
+            vertices = self.course_boundary[:-1]
+        inside = False
+        for (lat1, lon1), (lat2, lon2) in zip(vertices, vertices[1:] + vertices[:1]):
+            if (lat1 > latitude) != (lat2 > latitude):
+                if longitude < lon1 + (latitude - lat1) * (lon2 - lon1) / (lat2 - lat1):
+                    inside = not inside
+        return inside
 
     @property
     def uav_geofence(self) -> list[LatLng]:

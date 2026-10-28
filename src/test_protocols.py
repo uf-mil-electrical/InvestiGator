@@ -195,13 +195,18 @@ def check_fence(connection: MAVConnection, fence_status):
         report(False, "no fence stored")
         return
 
-    # Each polygon is a run of items carrying its vertex count in param1.
+    # Each polygon is a run of items carrying its vertex count in param1. A circle is one item with its radius there.
     polygons = []
+    keepout_areas = [item for item in items if item.command == mavlink.MAV_CMD_NAV_FENCE_CIRCLE_EXCLUSION]
+    items = [item for item in items if item.command != mavlink.MAV_CMD_NAV_FENCE_CIRCLE_EXCLUSION]
     start = 0
     while start < len(items):
         count = max(int(items[start].param1), 1)
         polygons.append(items[start:start + count])
         start += count
+
+    for circle in keepout_areas:
+        print(f"  exclusion circle: {circle.x / 1E7:.7f}, {circle.y / 1E7:.7f}, radius {circle.param1:g} m")
 
     kinds = {mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION: "inclusion", mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION: "exclusion"}
     inclusions = sum(polygon[0].command == mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION for polygon in polygons)

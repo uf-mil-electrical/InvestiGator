@@ -1,19 +1,20 @@
 import time
 import math
 from multiprocessing import Queue
-from queue import Empty
+from queue import Empty, SimpleQueue
 from enum import Enum
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
 from .mavconnection import MAVConnection
 from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
-from .geofence import Geofence, LatLng
+from .geofence import Geofence, LatLng, MIN_POLYGON_VERTICES, MAX_POLYGON_VERTICES
 from .camera import Camera, MarkerDetection
 from . import constants
 
+M_PER_DEG_LAT = 111_320.0
 
 
 class VehicleManager:
@@ -30,6 +31,19 @@ class VehicleManager:
 
         #self.lastknown_state = constants.MIL_STATE_CONNECTING
         #self.lastknown_pos = self.location.global_frame_relative #should be in lat, lon, rel alt order
+
+        self.run_started = False
+
+        # Goal of the current EM_RESPOND/EM_RETURN thread, None when no incident. Threads compare it by identity.
+        self.incident_lock = Lock()
+        self.incident_goal: MavFrameGlobalRel | None = None
+        # Set while a keep-out thread flies the drone out of a new circle. Emergency threads hold their goal until it clears.
+        self.keep_out_leaving = Event()
+
+        # Course fence from the OCS. fence_lock serializes fence writes to the Cube.
+        self.fence_inbox = SimpleQueue()
+        self.fence_live = Event()
+        self.fence_lock = Lock()
 
         self.detection_queue: Queue[MarkerDetection] = Queue()
         self.camera = Camera(self.detection_queue, preview=False)
@@ -66,8 +80,12 @@ class VehicleManager:
         self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.clear_uncontrolled_event)
         self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.check_intended_mode)
         self.subscribe(mavlink.MAVLink_command_long_message.msgname)(self.handle_system_command)
+        self.subscribe(mavlink.MAVLink_mission_count_message.msgname)(self.on_fence_upload)
+        self.subscribe(mavlink.MAVLink_mission_item_int_message.msgname)(self.on_fence_upload)
 
-    
+        Thread(name="Fence receiver Thread", target=self.receive_fences, daemon=True).start()
+
+
     def handle_system_command(self, message: mavlink.MAVLink_command_long_message):
         """
         Handle system commands from ground control through MIL_SYSTEM_CMD.
@@ -75,12 +93,26 @@ class VehicleManager:
         param1 = 1: Set mode to GUIDED.
         param1 = 2: Set uncontrolled
         param1 = 3: Set cancel mission
-        param1 = 4: Respond to emergency
-        param1 = 5: Return to mission
+        param1 = 4: Respond to emergency (AssistanceRequest)
+        param1 = 5: Return to mission (ReadinessConfirm)
         param1 = 6: Toggle Magnet
+        param1 = 7: Run started
+        param1 = 8: Add keep-out circle (KeepOutZone)
+        param1 = 9: Clear keep-out circles (AllClear)
         """
         if message.command == constants.MIL_SYSTEM_CMD:
-            match message.param1:
+            # A NaN or inf would make int() raise and stop this dispatcher thread.
+            if not all(math.isfinite(param) for param in (message.param1, message.param2, message.param3, message.param4)):
+                print("Ignoring a system command with a non-finite parameter.")
+                return
+
+            code = int(message.param1)
+            # The OCS sends ReadinessConfirm as param1 0 with confirmation 5.
+            if code == constants.MIL_SYSTEM_PING and message.confirmation == constants.MIL_SYSTEM_EM_RETURN:
+                code = constants.MIL_SYSTEM_EM_RETURN
+            result = mavlink.MAV_RESULT_ACCEPTED
+
+            match code:
                 case constants.MIL_SYSTEM_PING:
                     self.mav_connection.mav.statustext_send(severity=mavlink.MAV_SEVERITY_WARNING, text="Pong".encode())
                     print("Ping received from ground control.")
@@ -106,17 +138,50 @@ class VehicleManager:
 
                 case constants.MIL_SYSTEM_EM_RESPOND:
                     print("Recieved system command: Emergency Respond.")
-                    if self.mav_connection.system_status == constants.MIL_STATE_MISSION:
+                    latitude, longitude = message.param2, message.param3
+                    # The OCS sends degrees, the ground UI degrees * 1E7.
+                    if abs(latitude) <= 90 and abs(longitude) <= 180:
+                        latitude, longitude = latitude * 1E7, longitude * 1E7
+                    target = MavFrameGlobalRel(int(round(latitude)), int(round(longitude)), int(message.param4))
+
+                    if not self.status.armed or self.uncontrolled_event.is_set():
+                        print("Emergency respond denied: the companion computer isn't flying the drone.")
+                        result = mavlink.MAV_RESULT_DENIED
+                    elif target == self.incident_goal:
+                        print("Repeat of the current emergency.")
+                    else:
+                        if self.mav_connection.system_status == constants.MIL_STATE_MISSION:
+                            self.mav_connection_system_status = constants.MIL_STATE_EMERGENCY
+                            self.cancel_mission_event.set()
+                        with self.incident_lock:
+                            # A newer emergency keeps the first return point. From the pad, that's above it at the response height.
+                            if self.incident_goal is None:
+                                self.lastknown_pos = self.location.global_frame_relative
+                                if self.status.flight_phase == constants.FLIGHT_PHASE_GROUNDED:
+                                    self.lastknown_pos = self.lastknown_pos._replace(altitude_rel_m=target.altitude_rel_m)
+                            self.incident_goal = target
+                            if self.mav_connection.system_status == constants.MIL_STATE_AT_INCIDENT:
+                                self.mav_connection.system_status = constants.MIL_STATE_STANDBY
                         self.mav_connection_system_status = constants.MIL_STATE_EMERGENCY
-                        self.cancel_mission_event.set()
-                    self.lastknown_pos = self.location.global_frame_relative
-                    self.mav_connection_system_status = constants.MIL_STATE_EMERGENCY
-                    Thread(target=self.move_global_gps_relative_alt, args=(int(message.param2), int(message.param3), int(message.param4), 20,), daemon=True).start()
-                    print("Ready for further instructions.")
+                        Thread(target=self.em_fly_to, args=(target, True,), daemon=True).start()
+                        print("Ready for further instructions.")
 
                 case constants.MIL_SYSTEM_EM_RETURN:
                     print("Recieved all clear, returning to normal operations.")
-                    Thread(target=self.move_global_gps_relative_alt, args=(self.lastknown_pos[0], self.lastknown_pos[1], self.lastknown_pos[2],), daemon=True).start()
+                    # A copy, so it's a new goal by identity even if the return point is unchanged.
+                    goal = MavFrameGlobalRel(*self.lastknown_pos)
+                    with self.incident_lock:
+                        returning = self.incident_goal is not None
+                        if returning:
+                            self.incident_goal = goal
+                            self.mav_connection.custom_mode = constants.RX_TASK_NONE
+                            if self.mav_connection.system_status == constants.MIL_STATE_AT_INCIDENT:
+                                self.mav_connection.system_status = constants.MIL_STATE_STANDBY
+                    if returning:
+                        Thread(target=self.em_fly_to, args=(goal, False,), daemon=True).start()
+                    else:
+                        # Before any emergency, lastknown_pos is the boot position at ground level.
+                        print("No emergency to return from.")
                     #self.mav_connection_system_status = self.lastknown_state
 
                 case constants.MIL_SYSTEM_MAGNET:
@@ -126,11 +191,208 @@ class VehicleManager:
                     elif self.magnet_state == 0:
                         Thread(target=self.trigger_magnet, args=(1,), daemon=True).start()
                         self.magnet_state = 1
-                    
-            
-            if message.param1 in constants.MIL_SYSTEM_CMDS:
+
+                case constants.MIL_SYSTEM_RUN_START:
+                    print("Received run start.")
+                    self.run_started = True
+
+                case constants.MIL_SYSTEM_KEEP_OUT:
+                    if not message.param4 > 0:
+                        print(f"Keep-out circle denied: radius {message.param4:g} m.")
+                        result = mavlink.MAV_RESULT_DENIED
+                    elif self.geofence.add_keep_out(LatLng(float(message.param2), float(message.param3)), float(message.param4)):
+                        print(f"Keep-out circle: {message.param2:.7f}, {message.param3:.7f}, radius {message.param4:g} m.")
+                        Thread(target=self.update_keep_outs, daemon=True).start()
+
+                case constants.MIL_SYSTEM_ALL_CLEAR:
+                    print("Received AllClear: lifting keep-out circles.")
+                    if self.geofence.clear_keep_outs():
+                        Thread(target=self.update_keep_outs, daemon=True).start()
+
+
+            if code in constants.MIL_SYSTEM_CMDS:
                 print("Sending command ack")
-                self.mav.command_ack_send(command=constants.MIL_SYSTEM_CMD, result=mavlink.MAV_RESULT_ACCEPTED)
+                # result_param2 names the sub-code acked, so the OCS can tell its IncidentAcks apart.
+                self.mav.command_ack_send(command=constants.MIL_SYSTEM_CMD, result=result, progress=0, result_param2=code,
+                                          target_system=message.get_srcSystem(), target_component=message.get_srcComponent())
+
+    def em_fly_to(self, goal: MavFrameGlobalRel, responding: bool):
+        """
+        Fly to goal and hold there until another EM_RESPOND or EM_RETURN replaces it. Runs in its own thread.
+        Responding: take off if landed, then report on station (MIL_STATE_AT_INCIDENT) or a target it can't reach.
+        Returning: the incident ends on arrival, or on timeout.
+        """
+        sent = on_station = warned = False
+        deadline_s = settled_s = None
+
+        while True:
+            time.sleep(0.1)
+            in_control = self.in_control()
+            landed = self.status.flight_phase == constants.FLIGHT_PHASE_GROUNDED
+
+            with self.incident_lock:
+                if self.incident_goal is not goal:
+                    return
+                if not self.status.armed:
+                    print("Disarmed during an emergency: standing down.")
+                    self.incident_goal = None
+                    self.mav_connection.custom_mode = constants.RX_TASK_NONE
+                    if self.mav_connection.system_status == constants.MIL_STATE_AT_INCIDENT:
+                        self.mav_connection.system_status = constants.MIL_STATE_STANDBY
+                    return
+                if responding and in_control:
+                    # Set here rather than on receipt: main.py resets it when a cancelled mission returns.
+                    self.mav_connection.custom_mode = constants.RX_TASK_DYNAMIC_INCIDENT
+                holding = not in_control or self.keep_out_leaving.is_set() or (responding and landed)
+                if not holding and not sent:
+                    # Sent under the lock, so a superseded thread can't send after its replacement. Arrival is checked below.
+                    self.move_global_gps_relative_alt(goal.lattitude_int, goal.longitude_int, goal.altitude_rel_m, timeout_s=0)
+                    sent, settled_s = True, None
+                    deadline_s = time.monotonic() + constants.INCIDENT_TRANSIT_BASE_S + constants.INCIDENT_TRANSIT_S_PER_M * self.distance_to(goal)[0]
+
+            if holding:
+                sent = False
+                if responding and in_control and landed:
+                    print(f"Taking off to {goal.altitude_rel_m:g} m for the emergency.")
+                    if not self.takeoff(goal.altitude_rel_m):
+                        time.sleep(1)
+                continue
+            if on_station:
+                continue
+
+            # Looser than target_global_reached's 0.1 m, which is too tight for GPS.
+            horizontal_m, vertical_m = self.distance_to(goal)
+            if horizontal_m < constants.INCIDENT_ARRIVAL_M and vertical_m < constants.INCIDENT_ARRIVAL_M:
+                if settled_s is None:
+                    settled_s = time.monotonic()
+                if time.monotonic() - settled_s >= constants.INCIDENT_SETTLE_S:
+                    with self.incident_lock:
+                        if self.incident_goal is not goal:
+                            return
+                        if not responding:
+                            print("Back from the emergency.")
+                            self.incident_goal = None
+                            return
+                        print("On station at the emergency.")
+                        on_station = True
+                        if self.mav_connection.system_status == constants.MIL_STATE_STANDBY:
+                            self.mav_connection.system_status = constants.MIL_STATE_AT_INCIDENT
+                continue
+            settled_s = None
+
+            if time.monotonic() > deadline_s:
+                with self.incident_lock:
+                    if self.incident_goal is not goal:
+                        return
+                    if not responding:
+                        print("Return timed out: holding here.")
+                        self.incident_goal = None
+                        return
+                    if not warned:
+                        # GUIDED silently ignores a target outside the fence; keep waiting in case it was only slow.
+                        print("Emergency transit timed out: target outside the fence?")
+                        self.mav.statustext_send(mavlink.MAV_SEVERITY_WARNING, constants.STATUS_INCIDENT_TARGET_OUTSIDE_FENCE.encode())
+                        warned = True
+
+    def in_control(self) -> bool:
+        """
+        True while the companion flies the drone: no pilot override, and no scripted mission running or being cancelled.
+        """
+        return not (self.uncontrolled_event.is_set() or self.cancel_mission_event.is_set()
+                    or self.mav_connection.system_status == constants.MIL_STATE_MISSION)
+
+    def incident_active(self) -> bool:
+        with self.incident_lock:
+            return self.incident_goal is not None
+
+    def distance_to(self, target: MavFrameGlobalRel) -> tuple[float, float]:
+        """
+        Horizontal and vertical distance in meters from the drone to target (altitude relative to home).
+        """
+        current = self.location.global_frame_relative
+        if current.lattitude_int is None or current.altitude_rel_m is None:
+            return math.inf, math.inf
+        dn = (target.lattitude_int - current.lattitude_int) / 1E7 * M_PER_DEG_LAT
+        de = (target.longitude_int - current.longitude_int) / 1E7 * M_PER_DEG_LAT * math.cos(math.radians(current.lattitude_int / 1E7))
+        return math.hypot(dn, de), abs(target.altitude_rel_m - current.altitude_rel_m)
+
+    def offset_from(self, center: LatLng) -> tuple[float, float]:
+        """
+        The drone's position in meters north and east of center.
+        """
+        current = self.location.global_frame_relative
+        north = (current.lattitude_int / 1E7 - center.latitude) * M_PER_DEG_LAT
+        east = (current.longitude_int / 1E7 - center.longitude) * M_PER_DEG_LAT * math.cos(math.radians(center.latitude))
+        return north, east
+
+    def update_keep_outs(self):
+        """
+        Put the keep-out circles on the Cube's fence, after flying out of any the drone is in. Runs in its own thread.
+        """
+        if not self.geofence.fence_vertices:
+            return  # No boundary yet: configure_geofence uploads the circles with it.
+
+        with self.fence_lock:
+            try:
+                while self.status.armed and self.inside_keep_out():
+                    with self.incident_lock:
+                        self.keep_out_leaving.set()
+                    # Copter disarms on a breach while landed, so a circle over the pad waits until the takeoff is done.
+                    if self.in_control() and self.status.landed_state == mavlink.MAV_LANDED_STATE_IN_AIR:
+                        if self.leave_keep_outs():
+                            break
+                        time.sleep(1)
+                    time.sleep(0.1)
+
+                if not self.update_fence():
+                    print("Couldn't put the keep-out circles on the fence.")
+                    return
+                print(f"Fence updated: {len(self.geofence.exclusion_areas)} keep-out circle(s).")
+
+                # Re-send the emergency goal: the drone may have just left it, or it was inside a circle AllClear lifted.
+                with self.incident_lock:
+                    goal = self.incident_goal
+                    if goal is not None and self.in_control():
+                        self.move_global_gps_relative_alt(goal.lattitude_int, goal.longitude_int, goal.altitude_rel_m, timeout_s=0)
+            finally:
+                self.keep_out_leaving.clear()
+
+    def inside_keep_out(self) -> bool:
+        for center, radius_m in self.geofence.exclusion_areas:
+            if math.hypot(*self.offset_from(center)) < radius_m + constants.KEEP_OUT_CLEARANCE_M:
+                return True
+        return False
+
+    def leave_keep_outs(self) -> bool:
+        """
+        Fly out of every keep-out circle the drone is in, away from its center, before it goes on the fence.
+        """
+        for center, radius_m in self.geofence.exclusion_areas:
+            north, east = self.offset_from(center)
+            if math.hypot(north, east) >= radius_m + constants.KEEP_OUT_CLEARANCE_M:
+                continue
+
+            # Straight out from the center, or the nearest other direction that stays inside the boundary.
+            bearing = math.atan2(east, north)
+            exit_m = radius_m + constants.KEEP_OUT_EXIT_M
+            m_per_deg_lon = M_PER_DEG_LAT * math.cos(math.radians(center.latitude))
+            for turn_deg in (0, 45, -45, 90, -90, 135, -135, 180):
+                angle = bearing + math.radians(turn_deg)
+                latitude = center.latitude + exit_m * math.cos(angle) / M_PER_DEG_LAT
+                longitude = center.longitude + exit_m * math.sin(angle) / m_per_deg_lon
+                if self.geofence.contains(latitude, longitude):
+                    break
+            else:
+                print("No way out of the keep-out circle inside the boundary.")
+                return False
+
+            print("Leaving a new keep-out circle before it goes on the fence.")
+            altitude_m = self.location.global_frame_relative.altitude_rel_m
+            self.move_global_gps_relative_alt(int(round(latitude * 1E7)), int(round(longitude * 1E7)), altitude_m, timeout_s=1.0)
+            if not self.wait_for_condition(lambda: math.hypot(*self.offset_from(center)) >= radius_m + constants.KEEP_OUT_CLEARANCE_M,
+                                           timeout_s=constants.KEEP_OUT_LEAVE_TIMEOUT_S):
+                return False
+        return True
 
 
     def clear_uncontrolled_event(self, message: mavlink.MAVLink_heartbeat_message):
@@ -760,10 +1022,10 @@ class VehicleManager:
         finally:
             self.unsubscribe(mavlink.MAVLink_param_value_message.msgname, on_param_value)
 
-    def upload_fence_polygon(self, vertices: list[LatLng], exclusions: list[list[LatLng]] = (), timeout_s: float = 5.0, retries: int = 3) -> bool:
+    def upload_fence_polygon(self, vertices: list[LatLng], exclusions: list[list[LatLng]] = (), circles: list[tuple[LatLng, float]] = (), timeout_s: float = 5.0, retries: int = 3) -> bool:
         """
-        Upload vertices to the flight controller as the inclusion fence, and each polygon in
-        exclusions as an exclusion fence.
+        Upload vertices to the flight controller as the inclusion fence, each polygon in
+        exclusions as an exclusion fence, and each (center, radius_m) in circles as an exclusion circle.
 
         Uses the mission protocol with MAV_MISSION_TYPE_FENCE: MISSION_COUNT, then one MISSION_ITEM_INT
         per vertex as the autopilot requests them, then MISSION_ACK. The legacy FENCE_TOTAL/FENCE_POINT
@@ -776,10 +1038,11 @@ class VehicleManager:
         acknowledged = Event()
         ack_result = None
 
-        # (command, polygon vertex count, vertex) per mission item.
+        # (command, param1, point) per mission item. param1 is the polygon's vertex count, or a circle's radius.
         items = [(mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION, len(vertices), vertex) for vertex in vertices]
         for polygon in exclusions:
             items += [(mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION, len(polygon), vertex) for vertex in polygon]
+        items += [(mavlink.MAV_CMD_NAV_FENCE_CIRCLE_EXCLUSION, radius_m, center) for center, radius_m in circles]
 
         def send_vertex(seq: int):
             if not 0 <= seq < len(items):
@@ -894,7 +1157,7 @@ class VehicleManager:
         if not self.set_parameter("FENCE_ENABLE", 0):
             return False
 
-        if not self.upload_fence_polygon(vertices, self.geofence.exclusion_vertices):
+        if not self.upload_fence_polygon(vertices, self.geofence.exclusion_vertices, self.geofence.exclusion_areas):
             return False
 
         # FENCE_ALT_MAX_TP defaults to above-home, so the frame is set explicitly for an AMSL ceiling.
@@ -920,6 +1183,121 @@ class VehicleManager:
         if oa_type != 2:
             print(f"OA_TYPE is {oa_type:g}, not 2: paths won't be planned around exclusion zones.")
         return True
+
+    def update_fence(self) -> bool:
+        """
+        Re-upload the boundary, exclusion polygons and keep-out circles without touching FENCE_ENABLE, for use in flight.
+        The drone must not be inside any of them, or the upload itself is a breach.
+        """
+        return self.upload_fence_polygon(self.geofence.fence_vertices, self.geofence.exclusion_vertices, self.geofence.exclusion_areas)
+
+    def on_fence_upload(self, message):
+        """
+        Queue the OCS's fence upload (MISSION_COUNT, MISSION_ITEM_INT addressed to this component) for receive_fences.
+        """
+        if message.mission_type == mavlink.MAV_MISSION_TYPE_FENCE and message.target_component == mavlink.MAV_COMP_ID_ONBOARD_COMPUTER:
+            self.fence_inbox.put(message)
+
+    def receive_fences(self):
+        """
+        Receive course fences from the OCS for as long as the companion runs. Runs in its own thread.
+        """
+        count = None
+        while True:
+            if count is None:
+                count = self.fence_inbox.get()
+                if count.get_type() != mavlink.MAVLink_mission_count_message.msgname:
+                    count = None
+                    continue
+            count = self.receive_fence(count)
+
+    def receive_fence(self, count: mavlink.MAVLink_mission_count_message):
+        """
+        The receiving end of the fence upload that upload_fence_polygon makes to the Cube: request each item, ack,
+        then put the fence live while disarmed. Returns a MISSION_COUNT that restarted the upload, or None.
+        """
+        sender = (count.get_srcSystem(), count.get_srcComponent())
+        fence = mavlink.MAV_MISSION_TYPE_FENCE
+
+        items = []
+        for seq in range(count.count):
+            item = None
+            for _ in range(3):
+                self.mav.mission_request_int_send(*sender, seq, mission_type=fence)
+                deadline_s = time.monotonic() + 1.0
+                while item is None and (remaining_s := deadline_s - time.monotonic()) > 0:
+                    try:
+                        message = self.fence_inbox.get(timeout=remaining_s)
+                    except Empty:
+                        break
+                    if message.get_type() == mavlink.MAVLink_mission_count_message.msgname:
+                        return message
+                    if message.seq == seq:
+                        item = message
+                if item is not None:
+                    break
+            if item is None:
+                print("Fence upload from the OCS stopped arriving.")
+                self.mav.mission_ack_send(*sender, mavlink.MAV_MISSION_ERROR, mission_type=fence)
+                return None
+            items.append(item)
+
+        result, boundary, exclusions = self.parse_fence(items)
+        apply = result == mavlink.MAV_MISSION_ACCEPTED
+        if apply and self.fence_live.is_set() and boundary == self.geofence.uav_geofence and exclusions == self.geofence.exclusion_vertices:
+            print("Received the same course fence again.")
+            apply = False
+        elif apply and self.status.armed:
+            print("Course fence denied: armed.")
+            result, apply = mavlink.MAV_MISSION_DENIED, False
+        self.mav.mission_ack_send(*sender, result, mission_type=fence)
+        if not apply:
+            return None
+
+        print(f"Received course fence: {len(boundary) - 1} vertices, {len(exclusions)} exclusion zone(s).")
+        self.fence_live.clear()
+        with self.fence_lock:
+            if self.set_course_boundary(boundary, exclusions):
+                self.fence_live.set()
+            else:
+                print("Couldn't put the course fence on the flight controller.")
+        return None
+
+    @staticmethod
+    def parse_fence(items) -> tuple[int, list[LatLng], list[list[LatLng]]]:
+        """
+        Split fence MISSION_ITEM_INTs into one closed boundary and open exclusion polygons. Returns a MAV_MISSION_RESULT too.
+        """
+        inclusion, exclusion = mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION, mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION
+        boundary, exclusions = None, []
+
+        start = 0
+        while start < len(items):
+            first = items[start]
+            if first.command not in (inclusion, exclusion):
+                return mavlink.MAV_MISSION_UNSUPPORTED, [], []
+            vertex_count = int(first.param1)
+            polygon = items[start:start + vertex_count]
+            if vertex_count < 1 or len(polygon) != vertex_count or any(item.command != first.command or int(item.param1) != vertex_count for item in polygon):
+                return mavlink.MAV_MISSION_INVALID, [], []
+
+            vertices = [LatLng(item.x / 1E7, item.y / 1E7) for item in polygon]
+            if len(vertices) > 1 and vertices[0] == vertices[-1]:
+                vertices = vertices[:-1]
+            if not MIN_POLYGON_VERTICES <= len(vertices) <= MAX_POLYGON_VERTICES:
+                return mavlink.MAV_MISSION_INVALID, [], []
+
+            if first.command == exclusion:
+                exclusions.append(vertices)
+            elif boundary is None:
+                boundary = vertices + vertices[:1]
+            else:
+                return mavlink.MAV_MISSION_INVALID, [], []
+            start += vertex_count
+
+        if boundary is None:
+            return mavlink.MAV_MISSION_INVALID, [], []
+        return mavlink.MAV_MISSION_ACCEPTED, boundary, exclusions
 
     def reset_state(self):
         """
