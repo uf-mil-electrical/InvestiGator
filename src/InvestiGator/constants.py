@@ -100,6 +100,7 @@ MISSION_NUMBERS = {
     "GPS_TEST": 9,
     "GEOFENCE_TEST": 10,
     "EM_test": 11,
+    "LOITER_AT_10M": 12,
 }
 MISSION_NUMBERS_REVERSE = {v: k for k, v in MISSION_NUMBERS.items()}
 
@@ -123,10 +124,13 @@ FENCE_ALT_FRAME_AMSL = 0  # @Values: 0:Above sea level
 FENCE_ALT_MAX_M = 60.0
 # SITL's default home (Canberra) is 584 m AMSL, so in sim the ceiling keeps the same 60 m of headroom above it.
 FENCE_ALT_MAX_SIM_M = 644.0
+# GUIDED altitude targets are capped this far under the ceiling, so overshoot doesn't breach it.
+GUIDED_CEILING_BUFFER_M = 2.0
 
-# The fence is the course boundary. FENCE_MARGIN is a warning band inside it (no braking on planned
-# moves); FENCE_ACTION fires at the boundary itself.
-FENCE_MARGIN_M = 2.0
+# The fence is the course boundary inset GEOFENCE_INSET_M; FENCE_ACTION fires at the inset fence.
+# No FENCE_MARGIN warning band (ArduPilot only rejects negative values).
+GEOFENCE_INSET_M = 2.0
+FENCE_MARGIN_M = 0.0
 
 # Planner clearance from every fence edge, boundary and exclusions alike.
 OA_MARGIN_MAX_M = 1.0

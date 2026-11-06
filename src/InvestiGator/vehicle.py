@@ -142,7 +142,8 @@ class VehicleManager:
                     # The OCS sends degrees, the ground UI degrees * 1E7.
                     if abs(latitude) <= 90 and abs(longitude) <= 180:
                         latitude, longitude = latitude * 1E7, longitude * 1E7
-                    target = MavFrameGlobalRel(int(round(latitude)), int(round(longitude)), int(message.param4))
+                    # Capped here too, so arrival is judged against the height actually flown.
+                    target = MavFrameGlobalRel(int(round(latitude)), int(round(longitude)), int(self.cap_altitude(message.param4)))
 
                     if not self.status.armed or self.uncontrolled_event.is_set():
                         print("Emergency respond denied: the companion computer isn't flying the drone.")
@@ -526,17 +527,29 @@ class VehicleManager:
         start_s = time.monotonic()
 
         if not self.status.armed:
-            # TODO: Log waiting for arm
+            text = "Takeoff: waiting to arm"
+            print(text)
+            self.mav.statustext_send(mavlink.MAV_SEVERITY_NOTICE, text.encode())
             if not self.arm(timeout_s=timeout_s):
                 return False
 
+        alt_m = self.cap_altitude(alt_m)
         if not self.send_command(command=mavlink.MAV_CMD_NAV_TAKEOFF, param7=alt_m):
-            # TODO: Log failed takeoff command ack
+            reason = "cancelled" if self.cancel_mission_event.is_set() else "not accepted"
+            text = f"Takeoff to {alt_m:.1f} m {reason}"
+            print(text)
+            self.mav.statustext_send(mavlink.MAV_SEVERITY_NOTICE, text.encode())
             return False
-        
+
         remaining_s = timeout_s - (time.monotonic() - start_s)
         if not self.wait_for_condition(lambda: self.altitude_reached(alt_m), timeout_s=remaining_s):
-            # TODO: Log failed altitude, altitude reached, and aborting to RTL
+            altitude_rel_m = self.location.global_frame_relative.altitude_rel_m
+            reached = "?" if altitude_rel_m is None else f"{altitude_rel_m:.1f}"
+            reason = "cancelled" if self.cancel_mission_event.is_set() else "timed out"
+            # Under 50 characters, STATUSTEXT's limit.
+            text = f"Takeoff {reason} at {reached} of {alt_m:.1f} m"
+            print(text)
+            self.mav.statustext_send(mavlink.MAV_SEVERITY_NOTICE, text.encode())
             return False
         
         return True
@@ -550,6 +563,27 @@ class VehicleManager:
         if altitude_rel is not None and abs(altitude_rel - alt_m) <= threshold_m:
             return True
         return False
+
+    def ceiling_rel_m(self):
+        """
+        Highest GUIDED target, in m above home: GUIDED_CEILING_BUFFER_M under the fence ceiling. None without a position.
+        """
+        altitude_amsl_m = self.location.global_frame.altitude_m
+        altitude_rel_m = self.location.global_frame_relative.altitude_rel_m
+        if altitude_amsl_m is None or altitude_rel_m is None:
+            return None
+        home_amsl_m = altitude_amsl_m - altitude_rel_m
+        return self.fence_alt_max_m - home_amsl_m - constants.GUIDED_CEILING_BUFFER_M
+
+    def cap_altitude(self, alt_m):
+        """
+        alt_m (m above home), lowered to ceiling_rel_m() if above it.
+        """
+        ceiling_m = self.ceiling_rel_m()
+        if ceiling_m is None or alt_m <= ceiling_m:
+            return alt_m
+        print(f"Altitude {alt_m:g} m capped to {ceiling_m:.1f} m, {constants.GUIDED_CEILING_BUFFER_M:g} m under the ceiling.")
+        return ceiling_m
 
 
     def land(self, timeout_s=30.0):
@@ -611,6 +645,10 @@ class VehicleManager:
         typemask = XYZ_POS
         if not maintain_heading:
             typemask = XYZ_POS_YAW
+
+        altitude_rel_m = self.location.global_frame_relative.altitude_rel_m
+        if altitude_rel_m is not None:
+            down_m = altitude_rel_m - self.cap_altitude(altitude_rel_m - down_m)
 
         target_ned = self.convert_frd_target_to_local_ned_target(forward_m, right_m, down_m)
         if target_ned is None:
@@ -677,6 +715,7 @@ class VehicleManager:
         typemask = mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE | \
         mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE | mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE
 
+        alt_m = self.cap_altitude(alt_m)
         target_global_rel_pos = MavFrameGlobalRel(lat_int, lon_int, alt_m)
 
         self.mav.set_position_target_global_int_send(
@@ -1127,14 +1166,12 @@ class VehicleManager:
         in that case. RunDeclaration reports the geofence we enforce, so a fence that failed to upload
         must not be left behind for it to declare.
         """
-        self.geofence.set_course_boundary(corners)
-
-        if not self.geofence.set_exclusion_zones(exclusion_zones) or not self.configure_geofence():
+        if not self.geofence.set_course_boundary(corners) or not self.geofence.set_exclusion_zones(exclusion_zones) or not self.configure_geofence():
             self.geofence.clear()
             return False
 
         print(f"UAV geofence live: {len(self.geofence.fence_vertices)} vertices, {len(self.geofence.exclusion_vertices)} exclusion zone(s), "
-              f"{constants.FENCE_MARGIN_M} m margin, {self.fence_alt_max_m} m AMSL ceiling.")
+              f"{constants.GEOFENCE_INSET_M} m inside the course boundary, {self.fence_alt_max_m} m AMSL ceiling.")
         return True
 
     def configure_geofence(self) -> bool:
@@ -1244,7 +1281,7 @@ class VehicleManager:
 
         result, boundary, exclusions = self.parse_fence(items)
         apply = result == mavlink.MAV_MISSION_ACCEPTED
-        if apply and self.fence_live.is_set() and boundary == self.geofence.uav_geofence and exclusions == self.geofence.exclusion_vertices:
+        if apply and self.fence_live.is_set() and boundary == self.geofence.course_boundary and exclusions == self.geofence.exclusion_vertices:
             print("Received the same course fence again.")
             apply = False
         elif apply and self.status.armed:
