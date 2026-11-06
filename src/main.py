@@ -8,6 +8,7 @@ from config import load_config
 from missions import MISSIONS_BY_NAME, accept_mission, send_mission_complete
 from gc_helpers import valid_mission, MISSION_MENU
 from threading import Event
+from InvestiGator.geofence import LatLng
 
 interactive = False
 sim = False
@@ -50,6 +51,9 @@ def main():
     command_event = Event()
     mission_number = -1
 
+    fence_event = Event()
+    fence_vertices = []
+
     @vehicle.subscribe(mavlink.MAVLink_command_long_message.msgname)
     def handle_command_int(message):
         if message.command == MIL_MISSION_CMD and not command_event.is_set():
@@ -57,34 +61,64 @@ def main():
             mission_number = int(message.param1)
             command_event.set() 
 
+    @vehicle.subscribe(mavlink.MAVLink_mission_count_message.msgname)
+    def handle_mission_count(message):
+        if message.mission_type == mavlink.MAV_MISSION_TYPE_FENCE:
+            for i in range(0, message.count):
+                vehicle.mav.mission_request_int_send(
+                    target_system=254,
+                    target_component=0,
+                    mission_type=mavlink.MAV_MISSION_TYPE_FENCE,
+                    seq=i
+                )
+
+                fence_vertices.append(None)
+
+    @vehicle.subscribe(mavlink.MAVLink_mission_item_int_message.msgname)
+    def handle_mission_item(message):
+        if message.mission_type == mavlink.MAV_MISSION_TYPE_FENCE:
+            fence_vertices[message.seq] = LatLng(message.y / 10**7, message.x / 10**7)
+
+        if None not in fence_vertices:
+            fence_event.set()
+
+            vehicle.mav.mission_ack_send(
+                target_system=254,
+                target_component=0,
+                mission_type=mavlink.MAV_MISSION_TYPE_FENCE,
+                type=mavlink.MAV_MISSION_ACCEPTED
+            )
+
     try:
         if not interactive:
             while True:
-                if not command_event.wait(timeout=0.5):
-                    continue
-                
-                if vehicle.uncontrolled_event.is_set():
-                    print("Vehicle is in uncontrolled state. Rejecting mission. Change mode to GUIDED to clear.")
-                    send_mission_complete(connection, mission_number, success=False, result = mavlink.MAV_RESULT_DENIED)
-                    command_event.clear()
-                    continue
+                if command_event.wait(timeout=0.5):
+                    if vehicle.uncontrolled_event.is_set():
+                        print("Vehicle is in uncontrolled state. Rejecting mission. Change mode to GUIDED to clear.")
+                        send_mission_complete(connection, mission_number, success=False, result = mavlink.MAV_RESULT_DENIED)
+                        command_event.clear()
+                        continue
 
-                if not accept_mission(connection=connection, mission_number=mission_number):
-                    print(f"Mission {mission_number} rejected.")
-                    command_event.clear()
-                    continue
-                
-                mission_id = constants.MISSION_NUMBERS_REVERSE[mission_number]
-                try:
-                    connection.custom_mode = MISSIONS_BY_NAME[mission_id].rx_task
-                    connection.system_status = MIL_STATE_MISSION
-                    success = MISSIONS_BY_NAME[mission_id].function(vehicle)
-                    send_mission_complete(connection, mission_number, success=success)
-                finally:
-                    connection.custom_mode = constants.RX_TASK_NONE
+                    if not accept_mission(connection=connection, mission_number=mission_number):
+                        print(f"Mission {mission_number} rejected.")
+                        command_event.clear()
+                        continue
+                    
+                    mission_id = constants.MISSION_NUMBERS_REVERSE[mission_number]
+                    try:
+                        connection.custom_mode = MISSIONS_BY_NAME[mission_id].rx_task
+                        connection.system_status = MIL_STATE_MISSION
+                        success = MISSIONS_BY_NAME[mission_id].function(vehicle)
+                        send_mission_complete(connection, mission_number, success=success)
+                    finally:
+                        connection.custom_mode = constants.RX_TASK_NONE
 
-                vehicle.reset_state()
-                command_event.clear()
+                    vehicle.reset_state()
+                    command_event.clear()
+
+                if fence_event.is_set():
+                    vehicle.upload_fence_polygon(fence_vertices)
+                    fence_event.clear()
 
         else:
             while True:
