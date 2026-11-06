@@ -1,4 +1,4 @@
-from queue import Queue, ShutDown
+from queue import Queue
 from threading import Thread, Event, Lock
 from time import monotonic, sleep
 
@@ -19,12 +19,9 @@ class SubscriptionManager:
 
         def reader():
             while self.running.is_set():
-                try:
-                    message: mavlink.MAVLink_message = receive_queue.get(block=True)
-                    if message.get_type() in self.message_subscribers:
-                        self.update_subscribers(message)
-                except ShutDown:
-                    break
+                message: mavlink.MAVLink_message = receive_queue.get(block=True)
+                if message.get_type() in self.message_subscribers:
+                    self.update_subscribers(message)
 
         self.reader_thread = Thread(target=reader, name="SubManager Thread")
         self.reader_thread.start()
@@ -64,7 +61,6 @@ class SubscriptionManager:
             function(message)
 
     def close(self):
-        self.receive_queue.shutdown(immediate=True)
         self.running.clear()
         self.reader_thread.join()
 

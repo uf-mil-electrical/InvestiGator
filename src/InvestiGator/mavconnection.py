@@ -1,4 +1,4 @@
-from queue import Queue, ShutDown
+from queue import Queue
 from threading import Thread, Event, Lock
 from typing import cast
 import time
@@ -59,21 +59,16 @@ class MAVConnection:
 
         def mav_sender():
             while self.running.is_set():
-                try:
-                    message: mavlink.MAVLink_message = self.send_queue.get(block=True)
-                    self.mav_connection.write(message)
-                except ShutDown:
-                    break
+                message: mavlink.MAVLink_message = self.send_queue.get(block=True)
+                self.mav_connection.write(message)
 
         def mav_reader():
             while self.running.is_set():
                 self.mav_connection.select(timeout=0.05)
                 message = self.mav_connection.recv_match()
                 if message is not None:
-                    try:
-                        self.receive_queue.put(message)
-                    except ShutDown:
-                        break
+                    self.receive_queue.put(message)
+
 
         self.send_thread = Thread(name="mav_sender Thread", target=mav_sender, daemon=True)
         self.read_thread = Thread(name="mav_reader Thread", target=mav_reader, daemon=True)
@@ -159,8 +154,6 @@ class MAVConnection:
                 print("Reader thread join timed out.")
 
     def close(self):
-        self.send_queue.shutdown(immediate=True)
-        self.receive_queue.shutdown(immediate=True)
         self.running.clear()
         self.pub_manager.close()
         self.sub_manager.close()
