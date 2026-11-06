@@ -1,5 +1,5 @@
-from missions import MISSIONS, MISSIONS_BY_NUMBER
-from InvestiGator import MAVConnection, constants
+from .missions import MISSIONS, MISSIONS_BY_NUMBER
+from .InvestiGator import MAVConnection, constants
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
 from threading import Event
 
