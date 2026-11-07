@@ -10,7 +10,7 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink
 
 from .mavconnection import MAVConnection
 from .vehicle_properties import Location, MavFrameGlobalRel, MavFrameLocalOffsetNED, Status, MavFrameLocalNed, MavFrameGlobal
-from .geofence import Geofence, LatLng, MIN_POLYGON_VERTICES, MAX_POLYGON_VERTICES
+from .geofence import Geofence, LatLng, MIN_POLYGON_VERTICES, MAX_POLYGON_VERTICES, inset_polygon
 from .camera import Camera, MarkerDetection
 from . import constants
 
@@ -44,6 +44,9 @@ class VehicleManager:
         self.fence_inbox = SimpleQueue()
         self.fence_live = Event()
         self.fence_lock = Lock()
+        # Inclusion polygon read back from the Cube after the last upload, and the copy each OCS is downloading, by (sysid, compid).
+        self.cube_fence: list[LatLng] = []
+        self.fence_downloads: dict[tuple[int, int], list[LatLng]] = {}
 
         self.detection_queue: Queue[MarkerDetection] = Queue()
         self.camera = Camera(self.detection_queue, preview=False)
@@ -75,6 +78,11 @@ class VehicleManager:
         self.configure_messages()
         self.wait_for_condition(self.properties_populated)
 
+        # Before the fence receiver starts, so only a fence from an earlier session can be cleared. Still CONNECTING
+        # meanwhile: the OCS waits for the state to leave CONNECTING before it uploads (OCS_gaps.md gap 1).
+        self.wait_for_condition(lambda: self.status.base_mode is not None, timeout_s=5.0)
+        self.clear_stale_fence()
+
         self.mav_connection.system_status = constants.MIL_STATE_INITIAL_OVERRIDE
 
         self.subscribe(mavlink.MAVLink_heartbeat_message.msgname)(self.clear_uncontrolled_event)
@@ -82,6 +90,9 @@ class VehicleManager:
         self.subscribe(mavlink.MAVLink_command_long_message.msgname)(self.handle_system_command)
         self.subscribe(mavlink.MAVLink_mission_count_message.msgname)(self.on_fence_upload)
         self.subscribe(mavlink.MAVLink_mission_item_int_message.msgname)(self.on_fence_upload)
+        self.subscribe(mavlink.MAVLink_mission_request_list_message.msgname)(self.on_fence_download)
+        self.subscribe(mavlink.MAVLink_mission_request_int_message.msgname)(self.on_fence_download)
+        self.subscribe(mavlink.MAVLink_mission_request_message.msgname)(self.on_fence_download)
 
         Thread(name="Fence receiver Thread", target=self.receive_fences, daemon=True).start()
 
@@ -1106,18 +1117,22 @@ class VehicleManager:
                 mission_type=mavlink.MAV_MISSION_TYPE_FENCE
             )
 
+        # Only the Cube's messages: the OCS also talks fence protocol to this component (receive_fence, on_fence_download).
+        def from_cube(message) -> bool:
+            return message.mission_type == mavlink.MAV_MISSION_TYPE_FENCE and message.get_srcComponent() == mavlink.MAV_COMP_ID_AUTOPILOT1
+
         def on_request_int(message: mavlink.MAVLink_mission_request_int_message):
-            if message.mission_type == mavlink.MAV_MISSION_TYPE_FENCE:
+            if from_cube(message):
                 send_vertex(message.seq)
 
         def on_request(message: mavlink.MAVLink_mission_request_message):
             # ArduPilot asks with MISSION_REQUEST_INT. Older stacks ask with the float MISSION_REQUEST;
             # either way the vertex goes back as MISSION_ITEM_INT so no precision is lost.
-            if message.mission_type == mavlink.MAV_MISSION_TYPE_FENCE:
+            if from_cube(message):
                 send_vertex(message.seq)
 
         def on_ack(message: mavlink.MAVLink_mission_ack_message):
-            if message.mission_type != mavlink.MAV_MISSION_TYPE_FENCE:
+            if not from_cube(message):
                 return
             nonlocal ack_result
             ack_result = message.type
@@ -1155,6 +1170,53 @@ class VehicleManager:
             self.unsubscribe(mavlink.MAVLink_mission_request_message.msgname, on_request)
             self.unsubscribe(mavlink.MAVLink_mission_ack_message.msgname, on_ack)
 
+    def clear_stale_fence(self, timeout_s: float = 2.0, retries: int = 3) -> bool:
+        """
+        Disable and delete the fence stored on the flight controller at startup. The Cube keeps its fence
+        across reboots, so it's from an earlier session and may be another course's.
+        Skipped while armed: the drone may be mid-run with this course's fence after a Pi restart.
+        Never resets a fence the OCS already put live, even if called out of order.
+        """
+        if self.status.armed:
+            print("Armed at startup: keeping the flight controller's fence.")
+            return False
+
+        # fence_lock is held while an OCS fence is applied, so this can't interleave with one.
+        with self.fence_lock:
+            if self.fence_live.is_set():
+                print("A fence from the OCS is already live: keeping it.")
+                return False
+
+            if not self.set_parameter("FENCE_ENABLE", 0):
+                print("Couldn't disable the stored fence.")
+                return False
+
+            acknowledged = Event()
+            ack_result = None
+
+            def on_ack(message: mavlink.MAVLink_mission_ack_message):
+                if message.mission_type != mavlink.MAV_MISSION_TYPE_FENCE or message.get_srcComponent() != mavlink.MAV_COMP_ID_AUTOPILOT1:
+                    return
+                nonlocal ack_result
+                ack_result = message.type
+                acknowledged.set()
+
+            self.subscribe(mavlink.MAVLink_mission_ack_message.msgname)(on_ack)
+            try:
+                for _ in range(retries):
+                    acknowledged.clear()
+                    self.mav.mission_clear_all_send(1, mavlink.MAV_COMP_ID_AUTOPILOT1, mission_type=mavlink.MAV_MISSION_TYPE_FENCE)
+                    if acknowledged.wait(timeout_s):
+                        break
+            finally:
+                self.unsubscribe(mavlink.MAVLink_mission_ack_message.msgname, on_ack)
+
+        if ack_result != mavlink.MAV_MISSION_ACCEPTED:
+            print("Stored fence disabled, but deleting it wasn't acknowledged.")
+            return False
+        print("Stored fence from an earlier session disabled and deleted.")
+        return True
+
     def set_course_boundary(self, corners, exclusion_zones=()) -> bool:
         """
         Take the course boundary for this run and put it live on the flight controller as the UAV
@@ -1180,6 +1242,8 @@ class VehicleManager:
         OA_TYPE is checked, never written.
         """
         vertices = self.geofence.fence_vertices
+        exclusions, circles = self.geofence.exclusion_vertices, self.geofence.exclusion_areas
+        self.cube_fence = []
 
         if not vertices:
             print("No UAV geofence to upload. No course boundary has been received.")
@@ -1194,8 +1258,17 @@ class VehicleManager:
         if not self.set_parameter("FENCE_ENABLE", 0):
             return False
 
-        if not self.upload_fence_polygon(vertices, self.geofence.exclusion_vertices, self.geofence.exclusion_areas):
+        if not self.upload_fence_polygon(vertices, exclusions, circles):
             return False
+
+        # The OCS is told what ArduPilot stored, not what was computed: read it back, and don't enable a mismatch.
+        stored = self.read_cube_fence()
+        expected = [(int(round(v.latitude * 1E7)), int(round(v.longitude * 1E7))) for v in vertices]
+        inclusion = [(item.x, item.y) for item in stored or [] if item.command == mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION]
+        if stored is None or inclusion != expected or len(stored) != len(vertices) + sum(map(len, exclusions)) + len(circles):
+            print("The fence read back from the flight controller doesn't match what was uploaded.")
+            return False
+        self.cube_fence = [LatLng(x / 1E7, y / 1E7) for x, y in inclusion]
 
         # FENCE_ALT_MAX_TP defaults to above-home, so the frame is set explicitly for an AMSL ceiling.
         parameters = (
@@ -1232,6 +1305,9 @@ class VehicleManager:
         """
         Queue the OCS's fence upload (MISSION_COUNT, MISSION_ITEM_INT addressed to this component) for receive_fences.
         """
+        # The Cube's replies to read_cube_fence are addressed here too.
+        if message.get_srcComponent() == mavlink.MAV_COMP_ID_AUTOPILOT1:
+            return
         if message.mission_type == mavlink.MAV_MISSION_TYPE_FENCE and message.target_component == mavlink.MAV_COMP_ID_ONBOARD_COMPUTER:
             self.fence_inbox.put(message)
 
@@ -1287,18 +1363,106 @@ class VehicleManager:
         elif apply and self.status.armed:
             print("Course fence denied: armed.")
             result, apply = mavlink.MAV_MISSION_DENIED, False
+
+        if apply:
+            print(f"Received course fence: {len(boundary) - 1} vertices, {len(exclusions)} exclusion zone(s).")
+            self.fence_live.clear()
+            with self.fence_lock:
+                if self.set_course_boundary(boundary, exclusions):
+                    self.fence_live.set()
+                else:
+                    print("Couldn't put the course fence on the flight controller.")
+                    result = mavlink.MAV_MISSION_ERROR
+
+        # Acked once the fence is live, so after ACCEPTED the OCS can download the inset fence (on_fence_download).
         self.mav.mission_ack_send(*sender, result, mission_type=fence)
-        if not apply:
+        return None
+
+    def read_cube_fence(self, timeout_s: float = 1.0, retries: int = 3):
+        """
+        Download the fence stored on the Cube. Returns its MISSION_ITEM_INTs in order, or None.
+        """
+        fence = mavlink.MAV_MISSION_TYPE_FENCE
+        replies = SimpleQueue()
+
+        def on_reply(message):
+            if message.mission_type == fence and message.get_srcComponent() == mavlink.MAV_COMP_ID_AUTOPILOT1:
+                replies.put(message)
+
+        def request(send, wanted, seq=None):
+            for _ in range(retries):
+                send()
+                deadline_s = time.monotonic() + timeout_s
+                while (remaining_s := deadline_s - time.monotonic()) > 0:
+                    try:
+                        message = replies.get(timeout=remaining_s)
+                    except Empty:
+                        break
+                    if message.get_type() == wanted and (seq is None or message.seq == seq):
+                        return message
             return None
 
-        print(f"Received course fence: {len(boundary) - 1} vertices, {len(exclusions)} exclusion zone(s).")
-        self.fence_live.clear()
-        with self.fence_lock:
-            if self.set_course_boundary(boundary, exclusions):
-                self.fence_live.set()
-            else:
-                print("Couldn't put the course fence on the flight controller.")
-        return None
+        self.subscribe(mavlink.MAVLink_mission_count_message.msgname)(on_reply)
+        self.subscribe(mavlink.MAVLink_mission_item_int_message.msgname)(on_reply)
+        try:
+            count = request(lambda: self.mav.mission_request_list_send(1, mavlink.MAV_COMP_ID_AUTOPILOT1, mission_type=fence),
+                            mavlink.MAVLink_mission_count_message.msgname)
+            if count is None:
+                print("The flight controller didn't answer the fence read-back.")
+                return None
+            items = []
+            for seq in range(count.count):
+                item = request(lambda: self.mav.mission_request_int_send(1, mavlink.MAV_COMP_ID_AUTOPILOT1, seq, mission_type=fence),
+                               mavlink.MAVLink_mission_item_int_message.msgname, seq)
+                if item is None:
+                    print(f"Fence read-back stopped at item {seq} of {count.count}.")
+                    return None
+                items.append(item)
+            self.mav.mission_ack_send(1, mavlink.MAV_COMP_ID_AUTOPILOT1, mavlink.MAV_MISSION_ACCEPTED, mission_type=fence)
+            return items
+        finally:
+            self.unsubscribe(mavlink.MAVLink_mission_count_message.msgname, on_reply)
+            self.unsubscribe(mavlink.MAVLink_mission_item_int_message.msgname, on_reply)
+
+    def on_fence_download(self, message):
+        """
+        Answer the OCS's fence download from this component with the inclusion polygon read back from the Cube after the
+        upload (cube_fence): the inset boundary ArduPilot stored, not the one the OCS sent. Open; no fence live is a count of 0.
+        """
+        if message.mission_type != mavlink.MAV_MISSION_TYPE_FENCE or message.target_component != mavlink.MAV_COMP_ID_ONBOARD_COMPUTER:
+            return
+        # The Cube's own requests during upload_fence_polygon are addressed here too.
+        if message.get_srcComponent() == mavlink.MAV_COMP_ID_AUTOPILOT1:
+            return
+        sender = (message.get_srcSystem(), message.get_srcComponent())
+
+        if message.get_type() == mavlink.MAVLink_mission_request_list_message.msgname:
+            vertices = self.cube_fence if self.fence_live.is_set() else []
+            self.fence_downloads[sender] = vertices
+            self.mav.mission_count_send(*sender, len(vertices), mission_type=mavlink.MAV_MISSION_TYPE_FENCE)
+            return
+
+        vertices = self.fence_downloads.get(sender)
+        if vertices is None or not 0 <= message.seq < len(vertices):
+            self.mav.mission_ack_send(*sender, mavlink.MAV_MISSION_INVALID_SEQUENCE, mission_type=mavlink.MAV_MISSION_TYPE_FENCE)
+            return
+        vertex = vertices[message.seq]
+        self.mav.mission_item_int_send(
+            *sender,
+            seq=message.seq,
+            frame=mavlink.MAV_FRAME_GLOBAL,
+            command=mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION,
+            current=0,
+            autocontinue=0,
+            param1=len(vertices),
+            param2=0,
+            param3=0,
+            param4=0,
+            x=int(round(vertex.latitude * 1E7)),
+            y=int(round(vertex.longitude * 1E7)),
+            z=0,
+            mission_type=mavlink.MAV_MISSION_TYPE_FENCE
+        )
 
     @staticmethod
     def parse_fence(items) -> tuple[int, list[LatLng], list[list[LatLng]]]:
@@ -1333,6 +1497,10 @@ class VehicleManager:
             start += vertex_count
 
         if boundary is None:
+            return mavlink.MAV_MISSION_INVALID, [], []
+        # Refused up front rather than failing after the ack.
+        if not inset_polygon(boundary):
+            print(f"Course boundary can't be inset {constants.GEOFENCE_INSET_M} m: a repeated vertex, a hairpin, or too small.")
             return mavlink.MAV_MISSION_INVALID, [], []
         return mavlink.MAV_MISSION_ACCEPTED, boundary, exclusions
 
