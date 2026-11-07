@@ -7,7 +7,8 @@ import argparse
 from config import load_config
 from missions import MISSIONS_BY_NAME, accept_mission, send_mission_complete
 from gc_helpers import valid_mission, MISSION_MENU
-from threading import Event
+from threading import Event, Thread
+import time
 
 interactive = False
 sim = False
@@ -39,6 +40,33 @@ def initialize() -> MAVConnection:
 
     return connection
 
+def self_arm(vehicle: VehicleManager):
+    """
+    Once the OCS's fence is live, arm in GUIDED on the pad so the drone reports STATE_AUTO for RunStart.
+    Runs once, in its own thread. Never writes OA_TYPE: without the planner it reports not ready and stays disarmed.
+    """
+    vehicle.fence_live.wait()
+
+    # OA_TYPE = 2 is the path planner, needed to route around keep-out circles.
+    while (oa_type := vehicle.get_parameter("OA_TYPE")) != 2:
+        if oa_type is not None:
+            print(f"OA_TYPE is {oa_type:g}. Not arming: set parameter OA_TYPE = 2 and reboot the drone; "
+                  "this is NECESSARY for pathfinding on Task 4 - Advanced tier.")
+            vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_WARNING, constants.STATUS_NOT_READY_OA_TYPE.encode())
+            vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_WARNING, constants.STATUS_NOT_READY_OA_TYPE_WHY.encode())
+        time.sleep(constants.NOT_READY_REPORT_S)
+
+    # Auto-disarm applies in GUIDED, and the drone waits armed on the pad for RunStart.
+    while not vehicle.set_parameter("DISARM_DELAY", 0):
+        time.sleep(1)
+
+    # arm() can return False even when armed, so check the heartbeat. Pre-arm fails during GPS warm-up.
+    while not vehicle.status.armed:
+        if vehicle.set_mode("GUIDED"):
+            vehicle.arm()
+        time.sleep(1)
+    print("Armed in GUIDED on the pad.")
+
 def main():
 
     # Make connection
@@ -46,6 +74,7 @@ def main():
     print("Connection made!")
 
     vehicle = VehicleManager(mav_connection=connection, sim=sim)
+    Thread(name="Self-arm Thread", target=self_arm, args=(vehicle,), daemon=True).start()
 
     command_event = Event()
     mission_number = -1
@@ -65,6 +94,12 @@ def main():
                 
                 if vehicle.uncontrolled_event.is_set():
                     print("Vehicle is in uncontrolled state. Rejecting mission. Change mode to GUIDED to clear.")
+                    send_mission_complete(connection, mission_number, success=False, result = mavlink.MAV_RESULT_DENIED)
+                    command_event.clear()
+                    continue
+
+                if vehicle.incident_active():
+                    print("Responding to an incident. Rejecting mission.")
                     send_mission_complete(connection, mission_number, success=False, result = mavlink.MAV_RESULT_DENIED)
                     command_event.clear()
                     continue

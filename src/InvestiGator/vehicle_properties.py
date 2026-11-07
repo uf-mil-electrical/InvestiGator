@@ -181,6 +181,7 @@ class Status:
         self.custom_mode = None
         self.system_status = None
         self.heartbeat_t = None  # Receipt time of the last autopilot heartbeat
+        self.armed_once = False  # Latched on the first armed autopilot heartbeat
 
         # System Status Attributes
         self.onboard_control_sensors_present = None
@@ -214,6 +215,7 @@ class Status:
                 self.system_status = message.system_status
                 if message.get_srcComponent() == mavlink.MAV_COMP_ID_AUTOPILOT1:
                     self.heartbeat_t = time.monotonic()
+                    self.armed_once |= bool(message.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
 
         @vehicle.subscribe(mavlink.MAVLink_sys_status_message.msgname)
         def on_sys_status(message: mavlink.MAVLink_sys_status_message):
@@ -284,7 +286,8 @@ class Status:
     def robot_state(self):
         """
         RobotX Heartbeat.state from the latest autopilot heartbeat. Recomputed on every read, never latched.
-        KILLED when the autopilot heartbeat is stale, or when disarmed in any mode, including at power-on.
+        KILLED when the autopilot heartbeat is stale, or when disarmed in any mode after having armed once.
+        UNKNOWN while disarmed before the first arm (booting, waiting for the fence, or not ready).
         MANUAL when armed in a mode a pilot flies. AUTO when armed and in GUIDED.
         Armed in any other autopilot-flown mode (AUTO, RTL, LAND) falls back to MANUAL, so UNKNOWN is never reported.
         STATE_AUTO gates RunStart, so it must not be reported early.
@@ -295,8 +298,10 @@ class Status:
             mode = self.mode_map_bynumber.get(self.custom_mode)
 
             # Checked first so a kill always wins: stale autopilot data, or disarmed.
-            if not fresh or not armed:
+            if not fresh:
                 return constants.ROBOT_STATE_KILLED
+            if not armed:
+                return constants.ROBOT_STATE_KILLED if self.armed_once else constants.ROBOT_STATE_UNKNOWN
 
             if mode in MANUAL_MODES:
                 return constants.ROBOT_STATE_MANUAL
