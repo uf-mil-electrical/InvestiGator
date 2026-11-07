@@ -50,6 +50,7 @@ class MAVConnection:
         self.publish_function = self.pub_manager.register_publisher
         self.unpublish = self.pub_manager.remove_publisher
         self.subscribe = self.sub_manager.subscribe
+        self.unsubscribe = self.sub_manager.unsubscribe
 
         self.heartbeat_lock = Lock()
         self.mav_type = mav_type
