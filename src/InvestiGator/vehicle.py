@@ -57,6 +57,8 @@ class VehicleManager:
         self.subscribe = self.mav_connection.subscribe
         self.unsubscribe = self.mav_connection.sub_manager.unsubscribe
 
+        self.wait_for_condition = self.mav_connection.wait_for_condition_with_cancel(self.cancel_mission_event)
+
         self.mav = self.mav_connection.mav
 
         self.location = Location(self)
@@ -459,22 +461,6 @@ class VehicleManager:
         self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_ATTITUDE, param2=ten_hz_us)
         self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_GPS_RAW_INT, param2=two_hz_us)
         self.send_command(mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, param1=mavlink.MAVLINK_MSG_ID_EXTENDED_SYS_STATE, param2=one_hz_us)
-
-
-    def wait_for_condition(self, condition_function, timeout_s=30.0, interval_s=0.1):
-        """
-        Wait for condition function to be True within timeout_s seconds, checking every interval_s seconds.
-        If mission_cancel_event is set, returns False.
-        Return True if condition met, False if timeout reached.
-        """
-        start_s = time.monotonic()
-        while time.monotonic() - start_s < timeout_s:
-            if self.cancel_mission_event.wait(timeout=interval_s):
-                return False
-            if condition_function():
-                return True
-        return False
-
     
     def properties_populated(self):
         """
@@ -1072,104 +1058,6 @@ class VehicleManager:
         finally:
             self.unsubscribe(mavlink.MAVLink_param_value_message.msgname, on_param_value)
 
-    def upload_fence_polygon(self, vertices: list[LatLng], exclusions: list[list[LatLng]] = (), circles: list[tuple[LatLng, float]] = (), timeout_s: float = 5.0, retries: int = 3) -> bool:
-        """
-        Upload vertices to the flight controller as the inclusion fence, each polygon in
-        exclusions as an exclusion fence, and each (center, radius_m) in circles as an exclusion circle.
-
-        Uses the mission protocol with MAV_MISSION_TYPE_FENCE: MISSION_COUNT, then one MISSION_ITEM_INT
-        per vertex as the autopilot requests them, then MISSION_ACK. The legacy FENCE_TOTAL/FENCE_POINT
-        message pair is not an option: ArduCopter 4.8 has no handler for it, only the FENCE_STATUS
-        downlink. This replaces whatever fence was stored; there is no partial update.
-
-        No polygon may repeat its first point. Each goes up as a contiguous run of items, every vertex
-        carrying its own polygon's vertex count in param1.
-        """
-        acknowledged = Event()
-        ack_result = None
-
-        # (command, param1, point) per mission item. param1 is the polygon's vertex count, or a circle's radius.
-        items = [(mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION, len(vertices), vertex) for vertex in vertices]
-        for polygon in exclusions:
-            items += [(mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION, len(polygon), vertex) for vertex in polygon]
-        items += [(mavlink.MAV_CMD_NAV_FENCE_CIRCLE_EXCLUSION, radius_m, center) for center, radius_m in circles]
-
-        def send_vertex(seq: int):
-            if not 0 <= seq < len(items):
-                return
-
-            command, vertex_count, vertex = items[seq]
-            self.mav.mission_item_int_send(
-                target_system=1,
-                target_component=mavlink.MAV_COMP_ID_AUTOPILOT1,
-                seq=seq,
-                frame=mavlink.MAV_FRAME_GLOBAL,
-                command=command,
-                current=0,
-                autocontinue=0,
-                param1=vertex_count,
-                param2=0,
-                param3=0,
-                param4=0,
-                x=int(round(vertex.latitude * 1E7)),
-                y=int(round(vertex.longitude * 1E7)),
-                z=0,
-                mission_type=mavlink.MAV_MISSION_TYPE_FENCE
-            )
-
-        # Only the Cube's messages: the OCS also talks fence protocol to this component (receive_fence, on_fence_download).
-        def from_cube(message) -> bool:
-            return message.mission_type == mavlink.MAV_MISSION_TYPE_FENCE and message.get_srcComponent() == mavlink.MAV_COMP_ID_AUTOPILOT1
-
-        def on_request_int(message: mavlink.MAVLink_mission_request_int_message):
-            if from_cube(message):
-                send_vertex(message.seq)
-
-        def on_request(message: mavlink.MAVLink_mission_request_message):
-            # ArduPilot asks with MISSION_REQUEST_INT. Older stacks ask with the float MISSION_REQUEST;
-            # either way the vertex goes back as MISSION_ITEM_INT so no precision is lost.
-            if from_cube(message):
-                send_vertex(message.seq)
-
-        def on_ack(message: mavlink.MAVLink_mission_ack_message):
-            if not from_cube(message):
-                return
-            nonlocal ack_result
-            ack_result = message.type
-            acknowledged.set()
-
-        self.subscribe(mavlink.MAVLink_mission_request_int_message.msgname)(on_request_int)
-        self.subscribe(mavlink.MAVLink_mission_request_message.msgname)(on_request)
-        self.subscribe(mavlink.MAVLink_mission_ack_message.msgname)(on_ack)
-
-        try:
-            for _ in range(retries):
-                acknowledged.clear()
-                ack_result = None
-
-                self.mav.mission_count_send(
-                    target_system=1,
-                    target_component=mavlink.MAV_COMP_ID_AUTOPILOT1,
-                    count=len(items),
-                    mission_type=mavlink.MAV_MISSION_TYPE_FENCE
-                )
-
-                # One timeout covers the whole request/item exchange, not a single item.
-                if self.wait_for_condition(lambda: acknowledged.is_set(), timeout_s=timeout_s):
-                    if ack_result == mavlink.MAV_MISSION_ACCEPTED:
-                        return True
-
-                    print(f"Fence upload rejected: {mavlink.enums['MAV_MISSION_RESULT'][ack_result].name}.")
-                    return False
-
-            print(f"Fence upload was not acknowledged after {retries} attempts.")
-            return False
-
-        finally:
-            self.unsubscribe(mavlink.MAVLink_mission_request_int_message.msgname, on_request_int)
-            self.unsubscribe(mavlink.MAVLink_mission_request_message.msgname, on_request)
-            self.unsubscribe(mavlink.MAVLink_mission_ack_message.msgname, on_ack)
-
     def clear_stale_fence(self, timeout_s: float = 2.0, retries: int = 3) -> bool:
         """
         Disable and delete the fence stored on the flight controller at startup. The Cube keeps its fence
@@ -1258,7 +1146,7 @@ class VehicleManager:
         if not self.set_parameter("FENCE_ENABLE", 0):
             return False
 
-        if not self.upload_fence_polygon(vertices, exclusions, circles):
+        if not self.mav_connection.upload_fence_polygon(vertices, exclusions, circles, self.cancel_mission_event):
             return False
 
         # The OCS is told what ArduPilot stored, not what was computed: read it back, and don't enable a mismatch.
