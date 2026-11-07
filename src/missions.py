@@ -1,8 +1,16 @@
-from .InvestiGator import VehicleManager
-from .InvestiGator import MAVConnection
-from .InvestiGator import constants
-from .InvestiGator.constants import MIL_MISSION_CMD
-from .InvestiGator.geofence import LatLng
+try:
+    from .InvestiGator import VehicleManager
+    from .InvestiGator import MAVConnection
+    from .InvestiGator import constants
+    from .InvestiGator.constants import MIL_MISSION_CMD
+    from .InvestiGator.geofence import LatLng
+except:
+    from InvestiGator import VehicleManager
+    from InvestiGator import MAVConnection
+    from InvestiGator import constants
+    from InvestiGator.constants import MIL_MISSION_CMD
+    from InvestiGator.geofence import LatLng
+
 from dataclasses import dataclass
 from typing import Callable
 from pymavlink.dialects.v20 import ardupilotmega as mavlink
