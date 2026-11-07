@@ -117,7 +117,7 @@ def main():
                     command_event.clear()
 
                 if fence_event.is_set():
-                    vehicle.upload_fence_polygon(fence_vertices)
+                    vehicle.set_course_boundary(fence_vertices)
                     fence_event.clear()
 
         else:
