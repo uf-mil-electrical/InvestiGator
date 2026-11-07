@@ -92,7 +92,7 @@ FENCE_TYPE_UAV = FENCE_TYPE_POLYGON | FENCE_TYPE_MAX_ALT
 # FENCE_ALT_MAX_TP selects the altitude frame. It defaults to 1 (above home), so it must be set
 # explicitly for the ceiling to mean AMSL.
 FENCE_ALT_FRAME_AMSL = 0  # @Values: 0:Above sea level
-FENCE_ALT_MAX_M = 60.0
+FENCE_ALT_MAX_M = 32.148 # Competition max is 50m HAE, 40 HAE to be safe -> 32.148 AMSL according to EGM96
 # SITL's default home (Canberra) is 584 m AMSL, so in sim the ceiling keeps the same 60 m of headroom above it.
 FENCE_ALT_MAX_SIM_M = 644.0
 
