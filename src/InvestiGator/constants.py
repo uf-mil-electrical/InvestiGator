@@ -11,6 +11,7 @@ MIL_STATE_OVERRIDE = 11
 MIL_STATE_MISSION = 12
 MIL_STATE_INITIAL_OVERRIDE = 13
 MIL_STATE_EMERGENCY = 14
+MIL_STATE_AT_INCIDENT = 15  # ReadinessReport: holding at a Task 4 incident
 
 MIL_STATES = {
     MIL_STATE_CONNECTING: "MIL_STATE_CONNECTING",
@@ -18,7 +19,8 @@ MIL_STATES = {
     MIL_STATE_OVERRIDE: "MIL_STATE_OVERRIDE",
     MIL_STATE_MISSION: "MIL_STATE_MISSION",
     MIL_STATE_INITIAL_OVERRIDE: "MIL_STATE_INITIAL_OVERRIDE",
-    MIL_STATE_EMERGENCY: "MIL_STATE_EMERGENCY"
+    MIL_STATE_EMERGENCY: "MIL_STATE_EMERGENCY",
+    MIL_STATE_AT_INCIDENT: "MIL_STATE_AT_INCIDENT"
 }
 
 # System Commands
@@ -29,13 +31,39 @@ MIL_SYSTEM_CANCEL = 3
 MIL_SYSTEM_EM_RESPOND = 4
 MIL_SYSTEM_EM_RETURN = 5
 MIL_SYSTEM_MAGNET = 6
+MIL_SYSTEM_RUN_START = 7
+MIL_SYSTEM_KEEP_OUT = 8  # param2/param3 center lat/lon (deg), param4 radius (m)
+MIL_SYSTEM_ALL_CLEAR = 9
 
 MIL_SYSTEM_CMDS = {
     MIL_SYSTEM_PING: "MIL_SYSTEM_PING",
     MIL_SYSTEM_GUIDED: "MIL_SYSTEM_GUIDED",
     MIL_SYSTEM_OVERRIDE: "MIL_SYSTEM_OVERRIDE",
-    MIL_SYSTEM_CANCEL: "MIL_SYSTEM_CANCEL"
+    MIL_SYSTEM_CANCEL: "MIL_SYSTEM_CANCEL",
+    MIL_SYSTEM_EM_RESPOND: "MIL_SYSTEM_EM_RESPOND",
+    MIL_SYSTEM_EM_RETURN: "MIL_SYSTEM_EM_RETURN",
+    MIL_SYSTEM_RUN_START: "MIL_SYSTEM_RUN_START",
+    MIL_SYSTEM_KEEP_OUT: "MIL_SYSTEM_KEEP_OUT",
+    MIL_SYSTEM_ALL_CLEAR: "MIL_SYSTEM_ALL_CLEAR",
 }
+
+# Fixed STATUSTEXT reports to the OCS (severity WARNING).
+# STATUSTEXT holds 50 chars, so the not-ready report is two lines. The OCS matches the NOT_READY_OA_TYPE prefix.
+STATUS_NOT_READY_OA_TYPE = "NOT_READY_OA_TYPE: set OA_TYPE=2, reboot drone"
+STATUS_NOT_READY_OA_TYPE_WHY = "OA_TYPE=2 is NECESSARY for Task 4 Adv pathfinding"
+STATUS_INCIDENT_TARGET_OUTSIDE_FENCE = "INCIDENT_TARGET_OUTSIDE_FENCE"
+NOT_READY_REPORT_S = 5.0
+
+# Task 4 incident response.
+INCIDENT_ARRIVAL_M = 0.5
+INCIDENT_SETTLE_S = 1.0
+# Transit timeout: base plus per metre of straight-line distance.
+INCIDENT_TRANSIT_BASE_S = 20.0
+INCIDENT_TRANSIT_S_PER_M = 0.5
+# Leave a new keep-out circle if within radius + CLEARANCE; fly out to radius + EXIT.
+KEEP_OUT_CLEARANCE_M = 2.0
+KEEP_OUT_EXIT_M = 3.0
+KEEP_OUT_LEAVE_TIMEOUT_S = 20.0
 
 # Mirrors RxTask in robotx/rx_common.proto. Keep values in sync.
 # Published by the companion computer in HEARTBEAT.custom_mode.
@@ -71,7 +99,8 @@ MISSION_NUMBERS = {
     "RTL_BATT_TEST": 8,
     "GPS_TEST": 9,
     "GEOFENCE_TEST": 10,
-    "EM_test": 11
+    "EM_test": 11,
+    "LOITER_AT_10M": 12,
 }
 MISSION_NUMBERS_REVERSE = {v: k for k, v in MISSION_NUMBERS.items()}
 
@@ -95,7 +124,15 @@ FENCE_ALT_FRAME_AMSL = 0  # @Values: 0:Above sea level
 FENCE_ALT_MAX_M = 32.148 # Competition max is 50m HAE, 40 HAE to be safe -> 32.148 AMSL according to EGM96
 # SITL's default home (Canberra) is 584 m AMSL, so in sim the ceiling keeps the same 60 m of headroom above it.
 FENCE_ALT_MAX_SIM_M = 644.0
+# GUIDED altitude targets are capped this far under the ceiling, so overshoot doesn't breach it.
+GUIDED_CEILING_BUFFER_M = 2.0
 
-# The fence is the course boundary itself. FENCE_MARGIN is how far inside it the autopilot warns and,
-# with the fence bit in AVOID_ENABLE, stops the vehicle. FENCE_ACTION still fires at the boundary.
-FENCE_MARGIN_M = 2.0
+# The fence is the course boundary inset GEOFENCE_INSET_M; FENCE_ACTION fires at the inset fence.
+# No FENCE_MARGIN warning band (ArduPilot only rejects negative values).
+GEOFENCE_INSET_M = 2.0
+FENCE_MARGIN_M = 0.0
+
+# Planner clearance from every fence edge, boundary and exclusions alike.
+OA_MARGIN_MAX_M = 1.0
+# Sends GUIDED position targets through waypoint navigation, where the planner runs.
+GUID_OPTIONS_WPNAV_POSITION_TARGETS = 1 << 6
