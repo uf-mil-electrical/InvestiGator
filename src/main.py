@@ -63,6 +63,9 @@ def main():
 
     @vehicle.subscribe(mavlink.MAVLink_mission_count_message.msgname)
     def handle_mission_count(message):
+        nonlocal fence_vertices
+        fence_vertices = []
+
         if message.mission_type == mavlink.MAV_MISSION_TYPE_FENCE:
             for i in range(0, message.count):
                 vehicle.mav.mission_request_int_send(
@@ -76,8 +79,10 @@ def main():
 
     @vehicle.subscribe(mavlink.MAVLink_mission_item_int_message.msgname)
     def handle_mission_item(message):
+        nonlocal fence_vertices
+
         if message.mission_type == mavlink.MAV_MISSION_TYPE_FENCE:
-            fence_vertices[message.seq] = LatLng(message.y / 10**7, message.x / 10**7)
+            fence_vertices[message.seq] = LatLng(message.x / 10**7, message.y / 10**7)
 
         if None not in fence_vertices:
             fence_event.set()
