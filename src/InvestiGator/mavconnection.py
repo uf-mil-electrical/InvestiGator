@@ -134,7 +134,7 @@ class MAVConnection:
 
         return wait_for_condition
 
-    def upload_fence_polygon(self, vertices: list[LatLng], exclusions: list[list[LatLng]] = (), circles: list[tuple[LatLng, float]] = (), timeout_s: float = 5.0, retries: int = 3, target_component: int = mavlink.MAV_COMP_ID_AUTOPILOT1) -> bool:
+    def upload_fence_polygon(self, vertices: list[LatLng], cancel_event: Event, exclusions: list[list[LatLng]] = (), circles: list[tuple[LatLng, float]] = (), timeout_s: float = 5.0, retries: int = 3, target_component: int = mavlink.MAV_COMP_ID_AUTOPILOT1) -> bool:
         """
         Upload vertices to the flight controller as the inclusion fence, each polygon in
         exclusions as an exclusion fence, and each (center, radius_m) in circles as an exclusion circle.
@@ -217,7 +217,7 @@ class MAVConnection:
                 )
 
                 # One timeout covers the whole request/item exchange, not a single item.
-                if self.wait_for_condition(lambda: acknowledged.is_set(), timeout_s=timeout_s):
+                if self.wait_for_condition_with_cancel(cancel_event)(lambda: acknowledged.is_set(), timeout_s=timeout_s):
                     if ack_result == mavlink.MAV_MISSION_ACCEPTED:
                         return True
 

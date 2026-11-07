@@ -1146,7 +1146,7 @@ class VehicleManager:
         if not self.set_parameter("FENCE_ENABLE", 0):
             return False
 
-        if not self.mav_connection.upload_fence_polygon(vertices, exclusions, circles, self.cancel_mission_event):
+        if not self.mav_connection.upload_fence_polygon(vertices, self.cancel_mission_event, exclusions, circles):
             return False
 
         # The OCS is told what ArduPilot stored, not what was computed: read it back, and don't enable a mismatch.
@@ -1187,7 +1187,7 @@ class VehicleManager:
         Re-upload the boundary, exclusion polygons and keep-out circles without touching FENCE_ENABLE, for use in flight.
         The drone must not be inside any of them, or the upload itself is a breach.
         """
-        return self.upload_fence_polygon(self.geofence.fence_vertices, self.geofence.exclusion_vertices, self.geofence.exclusion_areas)
+        return self.upload_fence_polygon(self.geofence.fence_vertices, self.cancel_mission_event, self.geofence.exclusion_vertices, self.geofence.exclusion_areas)
 
     def on_fence_upload(self, message):
         """
