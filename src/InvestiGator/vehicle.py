@@ -1150,7 +1150,7 @@ class VehicleManager:
             return False
 
         # The OCS is told what ArduPilot stored, not what was computed: read it back, and don't enable a mismatch.
-        stored = self.read_cube_fence()
+        stored = self.mav_connection.read_cube_fence()
         expected = [(int(round(v.latitude * 1E7)), int(round(v.longitude * 1E7))) for v in vertices]
         inclusion = [(item.x, item.y) for item in stored or [] if item.command == mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION]
         if stored is None or inclusion != expected or len(stored) != len(vertices) + sum(map(len, exclusions)) + len(circles):
@@ -1265,52 +1265,6 @@ class VehicleManager:
         # Acked once the fence is live, so after ACCEPTED the OCS can download the inset fence (on_fence_download).
         self.mav.mission_ack_send(*sender, result, mission_type=fence)
         return None
-
-    def read_cube_fence(self, timeout_s: float = 1.0, retries: int = 3):
-        """
-        Download the fence stored on the Cube. Returns its MISSION_ITEM_INTs in order, or None.
-        """
-        fence = mavlink.MAV_MISSION_TYPE_FENCE
-        replies = SimpleQueue()
-
-        def on_reply(message):
-            if message.mission_type == fence and message.get_srcComponent() == mavlink.MAV_COMP_ID_AUTOPILOT1:
-                replies.put(message)
-
-        def request(send, wanted, seq=None):
-            for _ in range(retries):
-                send()
-                deadline_s = time.monotonic() + timeout_s
-                while (remaining_s := deadline_s - time.monotonic()) > 0:
-                    try:
-                        message = replies.get(timeout=remaining_s)
-                    except Empty:
-                        break
-                    if message.get_type() == wanted and (seq is None or message.seq == seq):
-                        return message
-            return None
-
-        self.subscribe(mavlink.MAVLink_mission_count_message.msgname)(on_reply)
-        self.subscribe(mavlink.MAVLink_mission_item_int_message.msgname)(on_reply)
-        try:
-            count = request(lambda: self.mav.mission_request_list_send(1, mavlink.MAV_COMP_ID_AUTOPILOT1, mission_type=fence),
-                            mavlink.MAVLink_mission_count_message.msgname)
-            if count is None:
-                print("The flight controller didn't answer the fence read-back.")
-                return None
-            items = []
-            for seq in range(count.count):
-                item = request(lambda: self.mav.mission_request_int_send(1, mavlink.MAV_COMP_ID_AUTOPILOT1, seq, mission_type=fence),
-                               mavlink.MAVLink_mission_item_int_message.msgname, seq)
-                if item is None:
-                    print(f"Fence read-back stopped at item {seq} of {count.count}.")
-                    return None
-                items.append(item)
-            self.mav.mission_ack_send(1, mavlink.MAV_COMP_ID_AUTOPILOT1, mavlink.MAV_MISSION_ACCEPTED, mission_type=fence)
-            return items
-        finally:
-            self.unsubscribe(mavlink.MAVLink_mission_count_message.msgname, on_reply)
-            self.unsubscribe(mavlink.MAVLink_mission_item_int_message.msgname, on_reply)
 
     def on_fence_download(self, message):
         """

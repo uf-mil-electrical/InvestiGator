@@ -1,4 +1,4 @@
-from queue import Queue
+from queue import Queue, SimpleQueue, Empty
 from threading import Thread, Event, Lock
 from typing import cast
 import time
@@ -133,6 +133,52 @@ class MAVConnection:
             return False
 
         return wait_for_condition
+
+    def read_cube_fence(self, timeout_s: float = 1.0, retries: int = 3, target_component=mavlink.MAV_COMP_ID_AUTOPILOT1):
+        """
+        Download the fence stored on the target component. Returns its MISSION_ITEM_INTs in order, or None.
+        """
+        fence = mavlink.MAV_MISSION_TYPE_FENCE
+        replies = SimpleQueue()
+
+        def on_reply(message):
+            if message.mission_type == fence and message.get_srcComponent() == target_component:
+                replies.put(message)
+
+        def request(send, wanted, seq=None):
+            for _ in range(retries):
+                send()
+                deadline_s = time.monotonic() + timeout_s
+                while (remaining_s := deadline_s - time.monotonic()) > 0:
+                    try:
+                        message = replies.get(timeout=remaining_s)
+                    except Empty:
+                        break
+                    if message.get_type() == wanted and (seq is None or message.seq == seq):
+                        return message
+            return None
+
+        self.subscribe(mavlink.MAVLink_mission_count_message.msgname)(on_reply)
+        self.subscribe(mavlink.MAVLink_mission_item_int_message.msgname)(on_reply)
+        try:
+            count = request(lambda: self.mav.mission_request_list_send(1, target_component, mission_type=fence),
+                            mavlink.MAVLink_mission_count_message.msgname)
+            if count is None:
+                print("The flight controller didn't answer the fence read-back.")
+                return None
+            items = []
+            for seq in range(count.count):
+                item = request(lambda: self.mav.mission_request_int_send(1, target_component, seq, mission_type=fence),
+                                mavlink.MAVLink_mission_item_int_message.msgname, seq)
+                if item is None:
+                    print(f"Fence read-back stopped at item {seq} of {count.count}.")
+                    return None
+                items.append(item)
+            self.mav.mission_ack_send(1, target_component, mavlink.MAV_MISSION_ACCEPTED, mission_type=fence)
+            return items
+        finally:
+            self.unsubscribe(mavlink.MAVLink_mission_count_message.msgname, on_reply)
+            self.unsubscribe(mavlink.MAVLink_mission_item_int_message.msgname, on_reply)
 
     def upload_fence_polygon(self, vertices: list[LatLng], cancel_event: Event, exclusions: list[list[LatLng]] = (), circles: list[tuple[LatLng, float]] = (), timeout_s: float = 5.0, retries: int = 3, target_component: int = mavlink.MAV_COMP_ID_AUTOPILOT1) -> bool:
         """
