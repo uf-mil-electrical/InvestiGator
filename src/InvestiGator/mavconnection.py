@@ -134,7 +134,7 @@ class MAVConnection:
 
         return wait_for_condition
 
-    def upload_fence_polygon(self, vertices: list[LatLng], cancel_event: Event, timeout_s: float = 5.0, retries: int = 3, ) -> bool:
+    def upload_fence_polygon(self, vertices: list[LatLng], cancel_event: Event, timeout_s: float = 5.0, retries: int = 3, target_component: int = mavlink.MAV_COMP_ID_AUTOPILOT1) -> bool:
         """
         Upload vertices to the flight controller as an ArduPilot polygon inclusion fence.
 
@@ -155,7 +155,7 @@ class MAVConnection:
 
             self.mav.mission_item_int_send(
                 target_system=1,
-                target_component=mavlink.MAV_COMP_ID_AUTOPILOT1,
+                target_component=target_component,
                 seq=seq,
                 frame=mavlink.MAV_FRAME_GLOBAL,
                 command=mavlink.MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION,
@@ -199,7 +199,7 @@ class MAVConnection:
 
                 self.mav.mission_count_send(
                     target_system=1,
-                    target_component=mavlink.MAV_COMP_ID_AUTOPILOT1,
+                    target_component=target_component,
                     count=len(vertices),
                     mission_type=mavlink.MAV_MISSION_TYPE_FENCE
                 )
