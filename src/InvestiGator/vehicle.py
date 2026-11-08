@@ -65,6 +65,7 @@ class VehicleManager:
         self.status = Status(self)
         self.geofence = Geofence()
         self.fence_alt_max_m = constants.FENCE_ALT_MAX_SIM_M if sim else constants.FENCE_ALT_MAX_M
+        self.last_target_checked = None
 
 
         self.lastknown_state = constants.MIL_STATE_STANDBY
@@ -157,6 +158,8 @@ class VehicleManager:
                         latitude, longitude = latitude * 1E7, longitude * 1E7
                     # Capped here too, so arrival is judged against the height actually flown.
                     target = MavFrameGlobalRel(int(round(latitude)), int(round(longitude)), int(self.cap_altitude(message.param4)))
+                    # Now rather than after a takeoff from the pad, when em_fly_to first sends it.
+                    self.notify_target_outside_fence(target.lattitude_int / 1E7, target.longitude_int / 1E7)
 
                     if not self.status.armed or self.uncontrolled_event.is_set():
                         print("Emergency respond denied: the companion computer isn't flying the drone.")
@@ -572,6 +575,23 @@ class VehicleManager:
         home_amsl_m = altitude_amsl_m - altitude_rel_m
         return self.fence_alt_max_m - home_amsl_m - constants.GUIDED_CEILING_BUFFER_M
 
+    def notify_target_outside_fence(self, latitude: float, longitude: float):
+        """
+        Send a NOTICE if GUIDED will ignore a position target here, which it does silently.
+        A repeat of the last target checked isn't reported again.
+        """
+        target = (round(latitude, 7), round(longitude, 7))
+        if target == self.last_target_checked:
+            return
+        self.last_target_checked = target
+        reason = self.geofence.excludes(latitude, longitude)
+        if reason is None:
+            return
+        # Under 50 characters, STATUSTEXT's limit.
+        text = f"Target {latitude:.6f},{longitude:.6f} {reason}"
+        print(text)
+        self.mav.statustext_send(mavlink.MAV_SEVERITY_NOTICE, text.encode())
+
     def cap_altitude(self, alt_m):
         """
         alt_m (m above home), lowered to ceiling_rel_m() if above it.
@@ -652,6 +672,12 @@ class VehicleManager:
             # TODO: Log
             return False
 
+        position, yaw_rad = self.location.global_frame, self.location.attitude.yaw_rad
+        if position.lattitude_int is not None:
+            latitude = position.lattitude_int / 1E7 + (forward_m * math.cos(yaw_rad) - right_m * math.sin(yaw_rad)) / M_PER_DEG_LAT
+            longitude = position.longitude_int / 1E7 + (forward_m * math.sin(yaw_rad) + right_m * math.cos(yaw_rad)) / (M_PER_DEG_LAT * math.cos(math.radians(latitude)))
+            self.notify_target_outside_fence(latitude, longitude)
+
         self.mav.set_position_target_local_ned_send(
             time_boot_ms=0,
             target_system=1,
@@ -714,6 +740,7 @@ class VehicleManager:
 
         alt_m = self.cap_altitude(alt_m)
         target_global_rel_pos = MavFrameGlobalRel(lat_int, lon_int, alt_m)
+        self.notify_target_outside_fence(lat_int / 1E7, lon_int / 1E7)
 
         self.mav.set_position_target_global_int_send(
             time_boot_ms=0,
