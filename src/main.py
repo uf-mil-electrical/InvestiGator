@@ -80,49 +80,6 @@ def main():
     command_event = Event()
     mission_number = -1
 
-    fence_event = Event()
-    fence_vertices = []
-
-    @vehicle.subscribe(mavlink.MAVLink_command_long_message.msgname)
-    def handle_command_int(message):
-        if message.command == MIL_MISSION_CMD and not command_event.is_set():
-            nonlocal mission_number
-            mission_number = int(message.param1)
-            command_event.set() 
-
-    @vehicle.subscribe(mavlink.MAVLink_mission_count_message.msgname)
-    def handle_mission_count(message):
-        nonlocal fence_vertices
-        fence_vertices = []
-
-        if message.mission_type == mavlink.MAV_MISSION_TYPE_FENCE:
-            for i in range(0, message.count):
-                vehicle.mav.mission_request_int_send(
-                    target_system=254,
-                    target_component=0,
-                    mission_type=mavlink.MAV_MISSION_TYPE_FENCE,
-                    seq=i
-                )
-
-                fence_vertices.append(None)
-
-    @vehicle.subscribe(mavlink.MAVLink_mission_item_int_message.msgname)
-    def handle_mission_item(message):
-        nonlocal fence_vertices
-
-        if message.mission_type == mavlink.MAV_MISSION_TYPE_FENCE:
-            fence_vertices[message.seq] = LatLng(message.x / 10**7, message.y / 10**7)
-
-        if None not in fence_vertices:
-            fence_event.set()
-
-            vehicle.mav.mission_ack_send(
-                target_system=254,
-                target_component=0,
-                mission_type=mavlink.MAV_MISSION_TYPE_FENCE,
-                type=mavlink.MAV_MISSION_ACCEPTED
-            )
-
     try:
         if not interactive:
             while True:
@@ -155,10 +112,6 @@ def main():
 
                     vehicle.reset_state()
                     command_event.clear()
-
-                if fence_event.is_set():
-                    vehicle.set_course_boundary(fence_vertices)
-                    fence_event.clear()
 
         else:
             while True:
