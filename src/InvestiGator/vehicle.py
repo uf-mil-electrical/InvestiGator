@@ -1188,17 +1188,32 @@ class VehicleManager:
             return False
         self.cube_fence = [LatLng(x / 1E7, y / 1E7) for x, y in inclusion]
 
-        # FENCE_ALT_MAX_TP defaults to above-home, so the frame is set explicitly for an AMSL ceiling.
-        parameters = (
+        # FENCE_ALT_MAX_TP (the ceiling's frame) only exists on firmware from late 2025. Older firmware (Copter 4.6) measures
+        # the ceiling from home, so FENCE_ALT_MAX is written as height above home to keep the same AMSL ceiling.
+        # OA_TYPE was just read, so no answer here means the parameter doesn't exist.
+        has_alt_max_frame = self.get_parameter("FENCE_ALT_MAX_TP") is not None
+        alt_max_m = self.fence_alt_max_m
+        if not has_alt_max_frame:
+            altitude_amsl_m = self.location.global_frame.altitude_m
+            altitude_rel_m = self.location.global_frame_relative.altitude_rel_m
+            if altitude_amsl_m is None or altitude_rel_m is None:
+                print("No position yet: can't place the fence ceiling above home.")
+                return False
+            alt_max_m = self.fence_alt_max_m - (altitude_amsl_m - altitude_rel_m)
+            print(f"No FENCE_ALT_MAX_TP on this firmware: ceiling set {alt_max_m:.1f} m above home ({self.fence_alt_max_m:g} m AMSL).")
+
+        parameters = [
             ("FENCE_TYPE", constants.FENCE_TYPE_UAV),
-            ("FENCE_ALT_MAX", self.fence_alt_max_m),
-            ("FENCE_ALT_MAX_TP", constants.FENCE_ALT_FRAME_AMSL),
+            ("FENCE_ALT_MAX", alt_max_m),
             ("FENCE_ACTION", constants.FENCE_ACTION_RTL),
             ("FENCE_MARGIN", constants.FENCE_MARGIN_M),
             ("OA_MARGIN_MAX", constants.OA_MARGIN_MAX_M),
             # Keep the Cube's other bits.
             ("GUID_OPTIONS", int(guided_options) | constants.GUID_OPTIONS_WPNAV_POSITION_TARGETS),
-        )
+        ]
+        if has_alt_max_frame:
+            # It defaults to above-home, so the frame is set explicitly for an AMSL ceiling.
+            parameters.append(("FENCE_ALT_MAX_TP", constants.FENCE_ALT_FRAME_AMSL))
 
         for parameter, value in parameters:
             if not self.set_parameter(parameter, value):
