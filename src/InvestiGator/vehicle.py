@@ -1013,7 +1013,7 @@ class VehicleManager:
         
         self.set_mode("CIRCLE")
 
-    def set_parameter(self, parameter: str, value: float, timeout_s: float = 2.0, retries: int = 3) -> bool:
+    def set_parameter(self, parameter: str, value: float, timeout_s: float = 4.0, retries: int = 3) -> bool:
         """
         Write one flight controller parameter and wait for the PARAM_VALUE the autopilot echoes back.
         PARAM_SET is unacknowledged, so without the echo a dropped packet is indistinguishable from
