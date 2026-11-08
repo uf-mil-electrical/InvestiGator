@@ -57,6 +57,18 @@ def inset_polygon(boundary: list[LatLng], inset_m: float = constants.GEOFENCE_IN
     return inset + inset[:1]
 
 
+def inside_polygon(vertices: list[LatLng], latitude: float, longitude: float) -> bool:
+    """
+    True if the point is inside the open polygon (ray casting in degrees, fine over a course).
+    """
+    inside = False
+    for (lat1, lon1), (lat2, lon2) in zip(vertices, vertices[1:] + vertices[:1]):
+        if (lat1 > latitude) != (lat2 > latitude):
+            if longitude < lon1 + (latitude - lat1) * (lon2 - lon1) / (lat2 - lat1):
+                inside = not inside
+    return inside
+
+
 # ArduPilot's per-polygon vertex limits.
 MIN_POLYGON_VERTICES = 3
 MAX_POLYGON_VERTICES = 255
@@ -157,12 +169,27 @@ class Geofence:
         """
         with self.lock:
             vertices = self.fence_boundary[:-1]
-        inside = False
-        for (lat1, lon1), (lat2, lon2) in zip(vertices, vertices[1:] + vertices[:1]):
-            if (lat1 > latitude) != (lat2 > latitude):
-                if longitude < lon1 + (latitude - lat1) * (lon2 - lon1) / (lat2 - lat1):
-                    inside = not inside
-        return inside
+        return inside_polygon(vertices, latitude, longitude)
+
+    def excludes(self, latitude: float, longitude: float) -> str | None:
+        """
+        Returns why GUIDED would ignore a position target here: outside the fence, in an exclusion zone or in a keep-out circle.
+        Returns None if it wouldn't, or with no fence.
+        """
+        with self.lock:
+            boundary, zones, areas = self.fence_boundary[:-1], list(self.exclusion_zones), list(self.keep_out_areas)
+        if not boundary:
+            return None
+        if not inside_polygon(boundary, latitude, longitude):
+            return "outside the fence"
+        if any(inside_polygon(zone, latitude, longitude) for zone in zones):
+            return "in an exclusion zone"
+        for center, radius_m in areas:
+            north = (latitude - center.latitude) * M_PER_DEG_LAT
+            east = (longitude - center.longitude) * M_PER_DEG_LAT * math.cos(math.radians(center.latitude))
+            if math.hypot(north, east) < radius_m:
+                return "in a keep-out zone"
+        return None
 
     @property
     def uav_geofence(self) -> list[LatLng]:
