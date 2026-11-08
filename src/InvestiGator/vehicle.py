@@ -1176,6 +1176,9 @@ class VehicleManager:
         if not self.mav_connection.upload_fence_polygon(vertices, self.cancel_mission_event, exclusions, circles):
             return False
 
+        print("Uploaded geofence, checking for mismatch")
+        time.sleep(1) # give time for update
+
         # The OCS is told what ArduPilot stored, not what was computed: read it back, and don't enable a mismatch.
         stored = self.mav_connection.read_cube_fence()
         expected = [(int(round(v.latitude * 1E7)), int(round(v.longitude * 1E7))) for v in vertices]
