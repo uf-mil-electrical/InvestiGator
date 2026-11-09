@@ -36,8 +36,7 @@ EXPECTED_PARAMS = {
     "FENCE_TYPE": constants.FENCE_TYPE_UAV,
     "FENCE_ACTION": constants.FENCE_ACTION_RTL,
     "FENCE_MARGIN": constants.FENCE_MARGIN_M,
-    "FENCE_ALT_MAX": constants.FENCE_ALT_MAX_M,
-    "FENCE_ALT_MAX_TP": constants.FENCE_ALT_FRAME_AMSL,
+    "FENCE_ALT_MAX": constants.FENCE_ALT_MAX_M,  # AMSL here; main() makes it height above home
 }
 
 failures = 0
@@ -235,6 +234,7 @@ def main():
 
     if args.sim:
         EXPECTED_PARAMS["FENCE_ALT_MAX"] = constants.FENCE_ALT_MAX_SIM_M
+        EXPECTED_PARAMS["FENCE_ALT_MAX_TP"] = constants.FENCE_ALT_FRAME_HOME
 
     config = load_config()
     address = config["simulation"].get("ground_control") if args.sim else config["hardware"].get("flight_controller")
@@ -250,6 +250,9 @@ def main():
                      param1=mavlink.MAVLINK_MSG_ID_FENCE_STATUS, param2=1E6)
         counts, latest, landed_states = listen(connection, args.duration)
         check_telemetry(counts, latest, landed_states, args.duration)
+        # The Pi writes the AMSL ceiling as height above home.
+        if position := latest.get((AUTOPILOT, "GLOBAL_POSITION_INT")):
+            EXPECTED_PARAMS["FENCE_ALT_MAX"] -= (position.alt - position.relative_alt) / 1E3
         check_fence(connection, latest.get((AUTOPILOT, "FENCE_STATUS")))
     finally:
         connection.close()

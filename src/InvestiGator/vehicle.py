@@ -64,7 +64,10 @@ class VehicleManager:
         self.location = Location(self)
         self.status = Status(self)
         self.geofence = Geofence()
+        self.sim = sim
         self.fence_alt_max_m = constants.FENCE_ALT_MAX_SIM_M if sim else constants.FENCE_ALT_MAX_M
+        # Last value from the OCS, to spot repeats.
+        self.max_altitude_hae_m: float | None = None
         self.last_target_checked = None
 
 
@@ -113,6 +116,7 @@ class VehicleManager:
         param1 = 7: Run started
         param1 = 8: Add keep-out circle (KeepOutZone)
         param1 = 9: Clear keep-out circles (AllClear)
+        param1 = 11: Set the maximum altitude (param2, m HAE)
         """
         if message.command == constants.MIL_SYSTEM_CMD:
             # A NaN or inf would make int() raise and stop this dispatcher thread.
@@ -225,6 +229,17 @@ class VehicleManager:
                     print("Received AllClear: lifting keep-out circles.")
                     if self.geofence.clear_keep_outs():
                         Thread(target=self.update_keep_outs, daemon=True).start()
+
+                case constants.MIL_SYSTEM_MAX_ALTITUDE:
+                    ceiling_amsl_m = self.amsl_ceiling_from_hae(message.param2)
+                    if message.param2 == self.max_altitude_hae_m:
+                        print("Repeat of the maximum altitude.")
+                    elif ceiling_amsl_m is None or self.status.flight_phase != constants.FLIGHT_PHASE_GROUNDED:
+                        print(f"Maximum altitude {message.param2:g} m HAE denied.")
+                        result = mavlink.MAV_RESULT_DENIED
+                    else:
+                        self.max_altitude_hae_m = message.param2
+                        Thread(target=self.set_fence_ceiling, args=(ceiling_amsl_m,), daemon=True).start()
 
 
             if code in constants.MIL_SYSTEM_CMDS:
@@ -1188,32 +1203,19 @@ class VehicleManager:
             return False
         self.cube_fence = [LatLng(x / 1E7, y / 1E7) for x, y in inclusion]
 
-        # FENCE_ALT_MAX_TP (the ceiling's frame) only exists on firmware from late 2025. Older firmware (Copter 4.6) measures
-        # the ceiling from home, so FENCE_ALT_MAX is written as height above home to keep the same AMSL ceiling.
-        # OA_TYPE was just read, so no answer here means the parameter doesn't exist.
-        has_alt_max_frame = self.get_parameter("FENCE_ALT_MAX_TP") is not None
-        alt_max_m = self.fence_alt_max_m
-        if not has_alt_max_frame:
-            altitude_amsl_m = self.location.global_frame.altitude_m
-            altitude_rel_m = self.location.global_frame_relative.altitude_rel_m
-            if altitude_amsl_m is None or altitude_rel_m is None:
-                print("No position yet: can't place the fence ceiling above home.")
-                return False
-            alt_max_m = self.fence_alt_max_m - (altitude_amsl_m - altitude_rel_m)
-            print(f"No FENCE_ALT_MAX_TP on this firmware: ceiling set {alt_max_m:.1f} m above home ({self.fence_alt_max_m:g} m AMSL).")
+        ceiling_parameters = self.fence_ceiling_parameters(self.fence_alt_max_m)
+        if ceiling_parameters is None:
+            return False
 
         parameters = [
             ("FENCE_TYPE", constants.FENCE_TYPE_UAV),
-            ("FENCE_ALT_MAX", alt_max_m),
+            *ceiling_parameters,
             ("FENCE_ACTION", constants.FENCE_ACTION_RTL),
             ("FENCE_MARGIN", constants.FENCE_MARGIN_M),
             ("OA_MARGIN_MAX", constants.OA_MARGIN_MAX_M),
             # Keep the Cube's other bits.
             ("GUID_OPTIONS", int(guided_options) | constants.GUID_OPTIONS_WPNAV_POSITION_TARGETS),
         ]
-        if has_alt_max_frame:
-            # It defaults to above-home, so the frame is set explicitly for an AMSL ceiling.
-            parameters.append(("FENCE_ALT_MAX_TP", constants.FENCE_ALT_FRAME_AMSL))
 
         for parameter, value in parameters:
             if not self.set_parameter(parameter, value):
@@ -1226,6 +1228,77 @@ class VehicleManager:
         if oa_type != 2:
             print(f"OA_TYPE is {oa_type:g}, not 2: paths won't be planned around exclusion zones.")
         return True
+
+    def fence_ceiling_parameters(self, ceiling_amsl_m: float) -> list[tuple[str, float]] | None:
+        """
+        Parameters that put an AMSL ceiling on the Cube, which measures it from home. None without a position.
+        """
+        altitude_amsl_m = self.location.global_frame.altitude_m
+        altitude_rel_m = self.location.global_frame_relative.altitude_rel_m
+
+        if altitude_amsl_m is None or altitude_rel_m is None:
+            print("No GPS Fix. Cannot place the fence ceiling above home.")
+            return None
+        
+        parameters = [("FENCE_ALT_MAX", ceiling_amsl_m - (altitude_amsl_m - altitude_rel_m))]
+        if self.sim:
+            # SITL's newer firmware has a ceiling frame, possibly saved as AMSL by earlier runs.
+            parameters.append(("FENCE_ALT_MAX_TP", constants.FENCE_ALT_FRAME_HOME))
+        return parameters
+
+    def geoid_height_m(self) -> float | None:
+        """
+        HAE minus AMSL here. None without GPS altitudes.
+        """
+        altitude_hae_m = self.location.altitude_hae_m
+        altitude_amsl_m = self.location.global_frame.altitude_m
+
+        if altitude_hae_m is None or altitude_amsl_m is None:
+            return None
+
+        return altitude_hae_m - altitude_amsl_m
+
+    def amsl_ceiling_from_hae(self, max_altitude_hae_m: float) -> float | None:
+        """
+        A max altitude in m HAE as an AMSL ceiling. None without GPS altitudes or if not above home.
+        """
+        geoid_m = self.geoid_height_m()
+        altitude_rel_m = self.location.global_frame_relative.altitude_rel_m
+        
+        if geoid_m is None or altitude_rel_m is None:
+            return None
+        
+        ceiling_amsl_m = max_altitude_hae_m - geoid_m
+        home_amsl_m = self.location.global_frame.altitude_m - altitude_rel_m
+        
+        if ceiling_amsl_m <= home_amsl_m:
+            return None
+        
+        return ceiling_amsl_m
+
+    def fence_ceiling_hae_m(self) -> float:
+        """
+        The Cube's ceiling in m HAE, for the OCS to declare. 0 without GPS altitudes.
+        """
+        geoid_m = self.geoid_height_m()
+        return 0.0 if geoid_m is None else self.fence_alt_max_m + geoid_m
+
+    def set_fence_ceiling(self, ceiling_amsl_m: float):
+        """
+        Put a new AMSL ceiling on the Cube, and use it for later fences and the GUIDED cap.
+        """
+        with self.fence_lock:
+            parameters = self.fence_ceiling_parameters(ceiling_amsl_m)
+
+            if parameters is None or not all(self.set_parameter(*parameter) for parameter in parameters):
+                print("Failed to put maximum altitude on the flight controller.")
+                self.mav.statustext_send(mavlink.MAV_SEVERITY_WARNING, constants.STATUS_MAX_ALTITUDE_FAILED.encode())
+                
+                self.max_altitude_hae_m = None 
+                return
+            
+            self.fence_alt_max_m = ceiling_amsl_m
+            print(f"Fence ceiling is now {ceiling_amsl_m:.1f} m AMSL.")
 
     def update_fence(self) -> bool:
         """
@@ -1347,7 +1420,7 @@ class VehicleManager:
             param4=0,
             x=int(round(vertex.latitude * 1E7)),
             y=int(round(vertex.longitude * 1E7)),
-            z=0,
+            z=self.fence_ceiling_hae_m(),
             mission_type=mavlink.MAV_MISSION_TYPE_FENCE
         )
 

@@ -34,6 +34,7 @@ MIL_SYSTEM_MAGNET = 6
 MIL_SYSTEM_RUN_START = 7
 MIL_SYSTEM_KEEP_OUT = 8  # param2/param3 center lat/lon (deg), param4 radius (m)
 MIL_SYSTEM_ALL_CLEAR = 9
+MIL_SYSTEM_MAX_ALTITUDE = 11  # param2 max altitude (m HAE)
 
 MIL_SYSTEM_CMDS = {
     MIL_SYSTEM_PING: "MIL_SYSTEM_PING",
@@ -45,12 +46,14 @@ MIL_SYSTEM_CMDS = {
     MIL_SYSTEM_RUN_START: "MIL_SYSTEM_RUN_START",
     MIL_SYSTEM_KEEP_OUT: "MIL_SYSTEM_KEEP_OUT",
     MIL_SYSTEM_ALL_CLEAR: "MIL_SYSTEM_ALL_CLEAR",
+    MIL_SYSTEM_MAX_ALTITUDE: "MIL_SYSTEM_MAX_ALTITUDE",
 }
 
 # Fixed STATUSTEXT reports to the OCS (severity WARNING).
 # STATUSTEXT holds 50 chars, so the not-ready report is two lines. The OCS matches the NOT_READY_OA_TYPE prefix.
 STATUS_NOT_READY_OA_TYPE = "NOT_READY_OA_TYPE: set OA_TYPE=2, reboot drone"
 STATUS_NOT_READY_OA_TYPE_WHY = "OA_TYPE=2 is NECESSARY for Task 4 Adv pathfinding"
+STATUS_MAX_ALTITUDE_FAILED = "MAX_ALTITUDE_FAILED: ceiling not applied"
 STATUS_INCIDENT_TARGET_OUTSIDE_FENCE = "INCIDENT_TARGET_OUTSIDE_FENCE"
 NOT_READY_REPORT_S = 5.0
 
@@ -118,9 +121,8 @@ FENCE_TYPE_MIN_ALT = 1 << 3  # 3:Min altitude
 # The course boundary polygon plus a ceiling. No circle fence, no min-altitude fence.
 FENCE_TYPE_UAV = FENCE_TYPE_POLYGON | FENCE_TYPE_MAX_ALT
 
-# FENCE_ALT_MAX_TP selects the altitude frame. It defaults to 1 (above home), so it must be set
-# explicitly for the ceiling to mean AMSL.
-FENCE_ALT_FRAME_AMSL = 0  # @Values: 0:Above sea level
+# Ceilings are AMSL; FENCE_ALT_MAX is written as height above home. FENCE_ALT_MAX_TP exists in SITL only.
+FENCE_ALT_FRAME_HOME = 1  # FENCE_ALT_MAX_TP @Values: 1:Above Home
 FENCE_ALT_MAX_M = 32.148 # Competition max is 50m HAE, 40 HAE to be safe -> 32.148 AMSL according to EGM96
 # SITL's default home (Canberra) is 584 m AMSL, so in sim the ceiling keeps the same 60 m of headroom above it.
 FENCE_ALT_MAX_SIM_M = 644.0
