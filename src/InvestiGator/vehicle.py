@@ -46,7 +46,9 @@ class VehicleManager:
         self.fence_lock = Lock()
         # Inclusion polygon read back from the Cube after the last upload, and the copy each OCS is downloading, by (sysid, compid).
         self.cube_fence: list[LatLng] = []
-        self.fence_downloads: dict[tuple[int, int], list[LatLng]] = {}
+        self.fence_downloads: dict[tuple[int, int], tuple[list[LatLng], float]] = {}
+        # FENCE_ALT_MAX as read back from the Cube (m above home).
+        self.cube_ceiling_m: float | None = None
 
         self.detection_queue: Queue[MarkerDetection] = Queue()
         self.camera = Camera(self.detection_queue, preview=False)
@@ -65,7 +67,7 @@ class VehicleManager:
         self.status = Status(self)
         self.geofence = Geofence()
         self.sim = sim
-        self.fence_alt_max_m = constants.FENCE_ALT_MAX_SIM_M if sim else constants.FENCE_ALT_MAX_M
+        self.fence_alt_max_m = (constants.FENCE_ALT_MAX_SIM_M if sim else constants.FENCE_ALT_MAX_M) - constants.MAX_ALT_MARGIN_M
         # Last value from the OCS, to spot repeats.
         self.max_altitude_hae_m: float | None = None
         self.last_target_checked = None
@@ -1221,6 +1223,9 @@ class VehicleManager:
             if not self.set_parameter(parameter, value):
                 return False
 
+        if not self.read_fence_ceiling():
+            return False
+
         if not self.set_parameter("FENCE_ENABLE", 1):
             return False
 
@@ -1268,7 +1273,7 @@ class VehicleManager:
         if geoid_m is None or altitude_rel_m is None:
             return None
         
-        ceiling_amsl_m = max_altitude_hae_m - geoid_m
+        ceiling_amsl_m = max_altitude_hae_m - geoid_m - constants.MAX_ALT_MARGIN_M
         home_amsl_m = self.location.global_frame.altitude_m - altitude_rel_m
         
         if ceiling_amsl_m <= home_amsl_m:
@@ -1281,7 +1286,25 @@ class VehicleManager:
         The Cube's ceiling in m HAE, for the OCS to declare. 0 without GPS altitudes.
         """
         geoid_m = self.geoid_height_m()
-        return 0.0 if geoid_m is None else self.fence_alt_max_m + geoid_m
+        altitude_rel_m = self.location.global_frame_relative.altitude_rel_m
+
+        if geoid_m is None or altitude_rel_m is None or self.cube_ceiling_m is None:
+            return 0.0
+
+        home_amsl_m = self.location.global_frame.altitude_m - altitude_rel_m
+        return self.cube_ceiling_m + home_amsl_m + geoid_m
+
+    def read_fence_ceiling(self) -> bool:
+        """
+        Read FENCE_ALT_MAX back from the Cube, so the OCS is told what ArduPilot stored.
+        """
+        ceiling_m = self.get_parameter("FENCE_ALT_MAX")
+        
+        if ceiling_m is None:
+            return False
+        
+        self.cube_ceiling_m = ceiling_m
+        return True
 
     def set_fence_ceiling(self, ceiling_amsl_m: float):
         """
@@ -1290,7 +1313,7 @@ class VehicleManager:
         with self.fence_lock:
             parameters = self.fence_ceiling_parameters(ceiling_amsl_m)
 
-            if parameters is None or not all(self.set_parameter(*parameter) for parameter in parameters):
+            if parameters is None or not all(self.set_parameter(*parameter) for parameter in parameters) or not self.read_fence_ceiling():
                 print("Failed to put maximum altitude on the flight controller.")
                 self.mav.statustext_send(mavlink.MAV_SEVERITY_WARNING, constants.STATUS_MAX_ALTITUDE_FAILED.encode())
                 
@@ -1398,11 +1421,14 @@ class VehicleManager:
 
         if message.get_type() == mavlink.MAVLink_mission_request_list_message.msgname:
             vertices = self.cube_fence if self.fence_live.is_set() else []
-            self.fence_downloads[sender] = vertices
+            ceiling_hae_m = self.fence_ceiling_hae_m()
+            self.fence_downloads[sender] = (vertices, ceiling_hae_m)
             self.mav.mission_count_send(*sender, len(vertices), mission_type=mavlink.MAV_MISSION_TYPE_FENCE)
+            if vertices:
+                self.mav.named_value_float_send(0, constants.NAMED_VALUE_MAX_ALT.encode(), ceiling_hae_m)
             return
 
-        vertices = self.fence_downloads.get(sender)
+        vertices, ceiling_hae_m = self.fence_downloads.get(sender, (None, 0.0))
         if vertices is None or not 0 <= message.seq < len(vertices):
             self.mav.mission_ack_send(*sender, mavlink.MAV_MISSION_INVALID_SEQUENCE, mission_type=mavlink.MAV_MISSION_TYPE_FENCE)
             return
@@ -1420,7 +1446,7 @@ class VehicleManager:
             param4=0,
             x=int(round(vertex.latitude * 1E7)),
             y=int(round(vertex.longitude * 1E7)),
-            z=self.fence_ceiling_hae_m(),
+            z=ceiling_hae_m,
             mission_type=mavlink.MAV_MISSION_TYPE_FENCE
         )
 

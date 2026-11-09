@@ -126,6 +126,10 @@ FENCE_ALT_FRAME_HOME = 1  # FENCE_ALT_MAX_TP @Values: 1:Above Home
 FENCE_ALT_MAX_M = 32.148 # Competition max is 50m HAE, 40 HAE to be safe -> 32.148 AMSL according to EGM96
 # SITL's default home (Canberra) is 584 m AMSL, so in sim the ceiling keeps the same 60 m of headroom above it.
 FENCE_ALT_MAX_SIM_M = 644.0
+# Taken off every maximum altitude.
+MAX_ALT_MARGIN_M = 2.0
+# name for the ceiling sent to the OCS, in m HAE (10 chars max).
+NAMED_VALUE_MAX_ALT = "MAX_ALT"
 # GUIDED altitude targets are capped this far under the ceiling, so overshoot doesn't breach it.
 GUIDED_CEILING_BUFFER_M = 2.0
 
