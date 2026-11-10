@@ -80,6 +80,13 @@ def main():
     command_event = Event()
     mission_number = -1
 
+    @vehicle.subscribe(mavlink.MAVLink_command_long_message.msgname)
+    def handle_command_int(message):
+        if message.command == MIL_MISSION_CMD and not command_event.is_set():
+            nonlocal mission_number
+            mission_number = int(message.param1)
+            command_event.set() 
+
     try:
         if not interactive:
             while True:
