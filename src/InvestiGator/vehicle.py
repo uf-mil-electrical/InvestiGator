@@ -1328,7 +1328,7 @@ class VehicleManager:
         Re-upload the boundary, exclusion polygons and keep-out circles without touching FENCE_ENABLE, for use in flight.
         The drone must not be inside any of them, or the upload itself is a breach.
         """
-        return self.upload_fence_polygon(self.geofence.fence_vertices, self.cancel_mission_event, self.geofence.exclusion_vertices, self.geofence.exclusion_areas)
+        return self.mav_connection.upload_fence_polygon(self.geofence.fence_vertices, self.cancel_mission_event, self.geofence.exclusion_vertices, self.geofence.exclusion_areas)
 
     def on_fence_upload(self, message):
         """
