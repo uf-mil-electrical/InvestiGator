@@ -103,7 +103,7 @@ MISSION_NUMBERS = {
     "GPS_TEST": 9,
     "GEOFENCE_TEST": 10,
     "EM_test": 11,
-    "LOITER_AT_10M": 12,
+    "LOITER_AT_5M": 12,
 }
 MISSION_NUMBERS_REVERSE = {v: k for k, v in MISSION_NUMBERS.items()}
 

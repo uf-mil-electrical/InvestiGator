@@ -641,10 +641,10 @@ def geofence_test(vehicle: VehicleManager):
     return vehicle.set_course_boundary(corners + corners[:1], [exclusion])
 
 
-@mission("LOITER_AT_10M")
-def loiter_at_10m(vehicle: VehicleManager):
+@mission("LOITER_AT_5M")
+def loiter_at_5m(vehicle: VehicleManager):
     """
-    Take off to 10 m, hold there for 60 s, then land.
+    Take off to 5 m, hold there for 120 s, then land.
     """
     if not vehicle.set_mode(target_mode = "GUIDED"):
         return False
@@ -655,16 +655,16 @@ def loiter_at_10m(vehicle: VehicleManager):
         return False
 
     print("Vehicle armed")
-    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 10m".encode())
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Taking off to 5m".encode())
 
-    if not vehicle.takeoff(alt_m = 10):
+    if not vehicle.takeoff(alt_m = 5):
         return False
 
-    print("Vehicle at altitude = 10m, holding for 60 s")
-    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Holding at 10m for 60s".encode())
+    print("Vehicle at altitude = 5m, holding for 120 s")
+    vehicle.mav.statustext_send(mavlink.MAV_SEVERITY_INFO, "Holding at 5m for 120s".encode())
 
     # GUIDED holds the takeoff position by itself. A cancel cuts the hold short.
-    if vehicle.cancel_mission_event.wait(timeout=60):
+    if vehicle.cancel_mission_event.wait(timeout=120):
         print("Hold cancelled, landing")
         vehicle.land()
         return False
