@@ -66,7 +66,8 @@ def self_arm(vehicle: VehicleManager):
         if vehicle.set_mode("GUIDED"):
             vehicle.arm()
         time.sleep(1)
-    print("Armed in GUIDED on the pad.")
+    start_pos = vehicle.location.global_frame
+    print(f"Armed in GUIDED on the pad at:\n\tlat {start_pos.lattitude_int / 1E7:.7f}\n\tlon {start_pos.longitude_int / 1E7:.7f}")
 
 def main():
 

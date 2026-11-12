@@ -286,6 +286,10 @@ class VehicleManager:
                     self.mav_connection.custom_mode = constants.RX_TASK_DYNAMIC_INCIDENT
                 holding = not in_control or self.keep_out_leaving.is_set() or (responding and landed)
                 if not holding and not sent:
+                    start_pos = self.location.global_frame
+                    print(f"Task 4 move from:\n\tlat {start_pos.lattitude_int / 1E7:.7f}\n\tlon {start_pos.longitude_int / 1E7:.7f}\n"
+                          f"to:\n\tlat {goal.lattitude_int / 1E7:.7f}\n\tlon {goal.longitude_int / 1E7:.7f}\n"
+                          f"distance: {self.distance_to(goal)[0]:.1f} m")
                     # Sent under the lock, so a superseded thread can't send after its replacement. Arrival is checked below.
                     self.move_global_gps_relative_alt(goal.lattitude_int, goal.longitude_int, goal.altitude_rel_m, timeout_s=0)
                     sent, settled_s = True, None
