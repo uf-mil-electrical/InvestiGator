@@ -237,6 +237,11 @@ class VehicleManager:
                     if message.param2 == self.max_altitude_hae_m:
                         print("Repeat of the maximum altitude.")
                     elif ceiling_amsl_m is None or self.status.flight_phase != constants.FLIGHT_PHASE_GROUNDED:
+                        if ceiling_amsl_m is None:
+                            print("AMSL_M IS NONE")
+                        else:
+                            print(f"AMSL_M: {ceiling_amsl_m}")
+                        print(f"self.status.flight_phase: {self.status.flight_phase}")
                         print(f"Maximum altitude {message.param2:g} m HAE denied.")
                         result = mavlink.MAV_RESULT_DENIED
                     else:
