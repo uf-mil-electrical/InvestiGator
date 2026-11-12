@@ -246,6 +246,8 @@ class VehicleManager:
 
             if code in constants.MIL_SYSTEM_CMDS:
                 print("Sending command ack")
+                if code in (constants.MIL_SYSTEM_EM_RESPOND, constants.MIL_SYSTEM_KEEP_OUT, constants.MIL_SYSTEM_ALL_CLEAR):
+                    print(f"Sending IncidentAck to OCS for {constants.MIL_SYSTEM_CMDS[code]}: {mavlink.enums['MAV_RESULT'][result].name}.")
                 # result_param2 names the sub-code acked, so the OCS can tell its IncidentAcks apart.
                 self.mav.command_ack_send(command=constants.MIL_SYSTEM_CMD, result=result, progress=0, result_param2=code,
                                           target_system=message.get_srcSystem(), target_component=message.get_srcComponent())
